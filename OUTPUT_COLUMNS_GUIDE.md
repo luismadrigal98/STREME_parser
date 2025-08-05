@@ -4,7 +4,7 @@ This document explains each column in the consolidated TSV file produced by the 
 
 ## Output File Columns
 
-The consolidated TSV file contains the following 16 columns, providing comprehensive information about motif occurrences across genetic lines:
+The consolidated TSV file contains the following 17 columns, providing comprehensive information about motif occurrences across genetic lines:
 
 ### 1. `consolidated_motif_id`
 **Format:** `MOTIF_001`, `MOTIF_002`, etc.
