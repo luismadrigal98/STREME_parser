@@ -1,0 +1,22 @@
+# MEME Analysis Pipeline Requirements
+# Python 3.7+ required
+
+# Biological sequence analysis
+biopython>=1.79
+
+# Data manipulation and analysis
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Command line interface enhancements
+argparse>=1.4.0
+
+# File system operations
+pathlib2>=2.3.6
+
+# Regular expressions (built-in, listed for clarity)
+# re - built-in module
+
+# Optional: For advanced analysis
+# scipy>=1.7.0  # Uncomment if statistical analysis needed
+# matplotlib>=3.5.0  # Uncomment if plotting needed
