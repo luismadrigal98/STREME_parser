@@ -339,9 +339,8 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
         
         # Update all sites in this cluster
         for site in cluster_sites:
-            site['motif_consensus'] = final_true_consensus  # Final consensus from ALL sequences
-            site['representative_sequence'] = most_common_original  # Most common STREME pattern
-            site['true_consensus'] = final_true_consensus  # Explicitly mark as calculated consensus
+            site['motif_consensus'] = final_true_consensus  # True consensus from actual sequences
+            site['original_streme_consensus'] = motif  # Original STREME pattern for reference
         
         if len(cluster_motifs) > 1:
             print(f"  Cluster {consolidated_id}: {len(cluster_motifs)} STREME motifs -> {len(all_cluster_sequences)} sequences -> final consensus: {final_true_consensus}")
