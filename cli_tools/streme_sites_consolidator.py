@@ -260,6 +260,93 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
     
     return consolidated_data
 
+def merge_overlapping_motifs(motif_sites, overlap_threshold=0.5):
+    """
+    Merge overlapping motif occurrences of the same type within the same gene/line.
+    This prevents STREME's sliding window artifacts from creating redundant entries.
+    
+    Args:
+        motif_sites: List of motif site dictionaries
+        overlap_threshold: Minimum fraction of overlap to consider for merging (0.5 = 50%)
+    
+    Returns:
+        List of merged motif sites
+    """
+    print(f"Merging overlapping motifs with threshold {overlap_threshold}")
+    
+    # Group by gene, line, strand, and consolidated motif ID
+    groups = {}
+    
+    for site in motif_sites:
+        key = (site['gene_id'], site['line'], site['strand'], site['consolidated_motif_id'])
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(site)
+    
+    merged_sites = []
+    total_original = len(motif_sites)
+    total_merged = 0
+    
+    for key, sites in groups.items():
+        # Sort by start position
+        sites.sort(key=lambda x: x['start_pos'])
+        
+        # Merge overlapping sites
+        merged_group = []
+        
+        for site in sites:
+            if not merged_group:
+                # First site in group
+                site['merged_count'] = 1
+                merged_group.append(site)
+            else:
+                last_merged = merged_group[-1]
+                
+                # Check for overlap
+                overlap_start = max(last_merged['start_pos'], site['start_pos'])
+                overlap_end = min(last_merged['end_pos'], site['end_pos'])
+                overlap_length = max(0, overlap_end - overlap_start + 1)
+                
+                # Calculate overlap fraction relative to shorter sequence
+                min_length = min(
+                    last_merged['end_pos'] - last_merged['start_pos'] + 1,
+                    site['end_pos'] - site['start_pos'] + 1
+                )
+                overlap_fraction = overlap_length / min_length if min_length > 0 else 0
+                
+                if overlap_fraction >= overlap_threshold:
+                    # Merge with the last site
+                    total_merged += 1
+                    
+                    # Extend the boundaries
+                    last_merged['start_pos'] = min(last_merged['start_pos'], site['start_pos'])
+                    last_merged['end_pos'] = max(last_merged['end_pos'], site['end_pos'])
+                    
+                    # Keep the best score
+                    last_merged['score'] = max(last_merged['score'], site['score'])
+                    
+                    # Update sequence to cover the full merged region
+                    # Keep the sequence with the better score
+                    if site['score'] > last_merged['score'] or len(site['sequence']) > len(last_merged['sequence']):
+                        last_merged['sequence'] = site['sequence']
+                    
+                    # Update length
+                    last_merged['length'] = last_merged['end_pos'] - last_merged['start_pos'] + 1
+                    
+                    # Track merged count
+                    last_merged['merged_count'] = last_merged.get('merged_count', 1) + 1
+                    
+                else:
+                    # No overlap, add as separate site
+                    site['merged_count'] = 1
+                    merged_group.append(site)
+        
+        # Add merged sites to final list
+        merged_sites.extend(merged_group)
+    
+    print(f"  Merged {total_merged} overlapping sites: {total_original} -> {len(merged_sites)} final sites")
+    return merged_sites
+
 def add_relative_positions(consolidated_data):
     """
     Add relative position information per gene per line
@@ -303,7 +390,7 @@ def write_comprehensive_output(consolidated_data, output_file):
         'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'line', 'gene_id',
         'start_pos', 'end_pos', 'strand', 'score', 'sequence',
         'representative_sequence', 'relative_position', 'total_motifs_in_gene',
-        'relative_position_fraction', 'cluster_size', 'length'
+        'relative_position_fraction', 'cluster_size', 'merged_count', 'length'
     ]
     
     # Ensure all columns exist
@@ -398,6 +485,27 @@ Input Directory Structure:
     )
     
     parser.add_argument(
+        '--merge-overlaps', '-m',
+        action='store_true',
+        default=True,
+        help='Merge overlapping motif hits within the same gene (default: True)'
+    )
+    
+    parser.add_argument(
+        '--no-merge-overlaps',
+        action='store_false',
+        dest='merge_overlaps',
+        help='Disable merging of overlapping motif hits'
+    )
+    
+    parser.add_argument(
+        '--overlap-threshold',
+        type=float,
+        default=0.5,
+        help='Minimum overlap fraction to merge motifs (default: 0.5)'
+    )
+    
+    parser.add_argument(
         '--verbose', '-v',
         action='store_true',
         help='Enable verbose output'
@@ -414,6 +522,9 @@ Input Directory Structure:
     print("=== STREME Sites Consolidator ===")
     print(f"Input directory: {results_dir}")
     print(f"Similarity threshold: {args.threshold}")
+    print(f"Overlap merging: {'Enabled' if args.merge_overlaps else 'Disabled'}")
+    if args.merge_overlaps:
+        print(f"Overlap threshold: {args.overlap_threshold}")
     print(f"Output prefix: {args.output}")
     
     # Find STREME directories with sites.tsv files
@@ -455,6 +566,10 @@ Input Directory Structure:
     
     # Consolidate motifs
     consolidated_data = consolidate_motifs_by_sequence(all_sites, args.threshold)
+    
+    # Merge overlapping motifs (removes STREME sliding window artifacts)
+    if args.merge_overlaps:
+        consolidated_data = merge_overlapping_motifs(consolidated_data, args.overlap_threshold)
     
     # Add relative position information
     consolidated_data = add_relative_positions(consolidated_data)

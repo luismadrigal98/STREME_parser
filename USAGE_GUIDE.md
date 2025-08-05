@@ -1,5 +1,9 @@
 # MEME Analysis Pipeline - Complete Usage Example
 
+## Documentation Files
+- **[OUTPUT_COLUMNS_GUIDE.md](OUTPUT_COLUMNS_GUIDE.md)** - Detailed explanation of each column in the consolidated TSV output
+- **[MOTIF_ANALYSIS_GUIDE.md](MOTIF_ANALYSIS_GUIDE.md)** - Technical guide for motif analysis methods
+
 ## Example Workflow for Mimulus guttatus Analysis
 
 ### Prerequisites
