@@ -1,0 +1,206 @@
+# Mimulus guttatus Promoter Detection Pipeline
+# Configuration file for promoter analysis workflow
+
+project:
+  name: "Mimulus guttatus Promoter Analysis"
+  species: "Mimulus guttatus"
+  genome_version: "v2.0"
+  date_created: "2025-07-08"
+  description: "Pipeline for detecting promoters and regulatory elements in Mimulus guttatus"
+
+# Input configuration
+input:
+  sequences_file: "sequences.fasta"
+  region_type: "promoter"
+  upstream_bp: 1000
+  downstream_bp: 0
+  reference_genome: "Mimulus_guttatus_v2.0.fa"
+
+# Phase 1: Sequence Preparation
+preprocessing:
+  low_complexity_removal:
+    tool: "dust"
+    output: "sequences.fasta.dusted.masked"
+    command: "dust sequences.fasta > sequences.fasta.dusted.masked"
+    status: "OPTIONAL"
+    notes: "This program is overly aggressive, so it could eliminate legitimate AT-rich regions that usually appear in promoters."
+  
+  repeat_masking:
+    tool: "RepeatMasker"
+    species: "Mimulus guttatus"
+    output: "sequences.fasta.masked"
+    command: 'RepeatMasker -species "Mimulus guttatus" sequences.fasta'
+  
+  background_model:
+    tool: "fasta-get-markov"
+    markov_order: 1
+    output: "background.txt"
+    command: "fasta-get-markov -m 1 sequences.fasta > background.txt"
+
+# Phase 2: Motif Discovery
+motif_discovery:
+  # meme:
+  #   tool: "MEME"
+  #   input: "sequences.fasta.masked"
+  #   output_dir: "meme_output"
+  #   parameters:
+  #     alphabet: "dna"
+  #     revcomp: true
+  #     mod: "zoops"  # Zero or one occurrence per sequence
+  #     nmotifs: 10
+  #     minw: 6
+  #     maxw: 20
+  #     evt: 0.01
+  #     minsites: 3
+  #     background_file: "background.txt"
+  #   command: >
+  #     meme All_gene_upstream_62_1kb/Genes_IM62_DNA_lifted.fasta.masked \
+  #     -dna -revcomp \
+  #     -mod zoops \
+  #     -nmotifs 20 \
+  #     -minw 6 -maxw 30 \
+  #     -minsites 200 \
+  #     -p 10 \
+  #     -bfile All_gene_upstream_62_1kb/model_order_1.txt \
+  #     -oc out_meme_2
+
+  streme:
+    tool: "STREME"
+    input: "sequences.fasta.masked"
+    output_dir: "streme_output"
+    parameters:
+      alphabet: "dna"
+      revcomp: true
+      nmotifs: 5
+      minw: 8
+      maxw: 15
+    command: >
+      streme --p All_gene_upstream_62_1kb/Genes_IM62_DNA_lifted.fasta.masked --nmotifs 10 --thresh 0.05 --minw 6 --maxw 20 -oc streme
+
+# Phase 4: File Consolidation
+file_consolidation:
+  motif_extraction:
+    tool: "custom_script"
+    description: "Extract and consolidate motifs from STREME output"
+    input: "streme_output/streme.txt"
+    output: "consolidated_motifs.txt"
+    method: "pair_wise_processing"
+    script: |
+      # Process STREME output file line by line in pairs
+      # Extract motif information and consolidate
+      python consolidate_streme_output.py streme_output/streme.txt consolidated_motifs.txt
+  
+  sequence_grouping:
+    tool: "custom_script"
+    description: "Group sequences based on motif presence"
+    input: "sequences.fasta.masked"
+    motif_file: "consolidated_motifs.txt"
+    output: "grouped_sequences.txt"
+    command: |
+      # Group sequences that contain similar motifs (simple version, no dependencies)
+      python group_sequences_simple.py sequences.fasta.masked consolidated_motifs.txt grouped_sequences.txt
+
+# Phase 3: Regulatory Element Analysis
+regulatory_analysis:
+  plantpan:
+    tool: "PlantPAN 4.0"
+    url: "https://plantpan.itps.ncku.edu.tw/plantpan4/"
+    analysis_types:
+      - "TFBS_prediction"
+      - "CpG_islands"
+      - "tandem_repeats"
+    species_matrices: 115
+    total_matrices: 3428
+
+  fimo:
+    tool: "FIMO"
+    motif_database: "plant_motif_database.meme"
+    threshold: 0.0001
+    output: "fimo_results.txt"
+    command: >
+      fimo --thresh 0.0001
+      plant_motif_database.meme
+      sequences.fasta.masked
+
+# Phase 5: Validation and Refinement
+validation:
+  tomtom:
+    tool: "TOMTOM"
+    input_motifs: "streme_output/streme.txt"
+    reference_database: "plant_motif_database.meme"
+    output: "tomtom_results.txt"
+    threshold: 0.01
+    command: >
+      tomtom -thresh 0.01
+      streme_output/streme.txt
+      plant_motif_database.meme
+
+  centrimo:
+    tool: "CentriMo"
+    input_motifs: "streme_output/streme.txt"
+    sequences: "sequences.fasta.masked"
+    output: "centrimo_results.txt"
+    command: >
+      centrimo
+      sequences.fasta.masked
+      streme_output/streme.txt
+
+# Database resources
+databases:
+  plant_databases:
+    - name: "PlantProm DB"
+      description: "Experimentally verified plant promoters"
+      url: "http://linux1.softberry.com/berry.phtml?topic=plantprom"
+    
+    - name: "PLACE"
+      description: "Plant cis-acting regulatory element database"
+      url: "https://www.dna.affrc.go.jp/PLACE/"
+    
+    - name: "PlantTFDB"
+      description: "Plant transcription factor database"
+      url: "http://planttfdb.cbi.pku.edu.cn/"
+
+# Output files
+expected_outputs:
+  - "sequences.fasta.masked"
+  - "background.txt"
+  - "promoter_predictions.txt"
+  - "streme_output/streme.html"
+  - "streme_output/streme.txt"
+  - "consolidated_motifs.txt"
+  - "grouped_sequences.txt"
+  - "fimo_results.txt"
+  - "tomtom_results.txt"
+  - "centrimo_results.txt"
+
+# Quality control thresholds
+quality_control:
+  motif_discovery:
+    max_evalue: 0.01
+    min_sites: 3
+    min_width: 6
+    max_width: 20
+  
+  tfbs_prediction:
+    fimo_threshold: 0.0001
+    tomtom_threshold: 0.01
+
+# Computational requirements
+resources:
+  cpu_cores: 4
+  memory_gb: 16
+  estimated_runtime: "2-4 hours"
+  disk_space_gb: 10
+
+# Notes and references
+notes:
+  - "Mimulus guttatus is a model plant system with extensive genomic resources"
+  - "Use zoops model for promoter analysis (zero or one occurrence per sequence)"
+  - "TSSPlant achieves higher accuracy for plant promoter prediction"
+  - "PlantPAN 4.0 provides comprehensive plant TFBS analysis"
+  - "Consider both TATA and TATA-less promoters"
+
+references:
+  - "TSSPlant: a new tool for prediction of plant transcription start sites"
+  - "PlantPAN 4.0: updated database for plant promoter analysis"
+  - "MEME Suite: tools for motif discovery and searching"

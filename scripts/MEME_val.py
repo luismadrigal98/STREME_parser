@@ -1,0 +1,4 @@
+'''
+MEME validation script.
+
+'''
