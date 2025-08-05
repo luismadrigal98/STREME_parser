@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# MEME Analysis Pipeline - Shell Wrapper
+# This script provides a convenient way to run the MEME pipeline tools
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_SCRIPT="$SCRIPT_DIR/meme_pipeline.py"
+
+# Check if Python script exists
+if [ ! -f "$PYTHON_SCRIPT" ]; then
+    echo "Error: meme_pipeline.py not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+# Check if conda environment is activated (optional)
+if [[ "$CONDA_DEFAULT_ENV" != "" ]]; then
+    echo "Using conda environment: $CONDA_DEFAULT_ENV"
+fi
+
+# Run the Python script with all arguments
+python3 "$PYTHON_SCRIPT" "$@"
