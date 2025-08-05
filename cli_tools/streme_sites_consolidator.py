@@ -178,6 +178,66 @@ def parse_sites_file(sites_file, line_name):
         print(f"Error processing {sites_file}: {e}")
         return []
 
+def calculate_consensus_from_sequences(sequences):
+    """
+    Calculate a true consensus sequence from actual sequences found,
+    not just using the STREME consensus pattern.
+    """
+    if not sequences:
+        return ""
+    
+    # Find the most common length
+    lengths = [len(seq) for seq in sequences]
+    most_common_length = max(set(lengths), key=lengths.count)
+    
+    # Filter to sequences of the most common length
+    filtered_seqs = [seq for seq in sequences if len(seq) == most_common_length]
+    
+    if not filtered_seqs:
+        return sequences[0]  # Fallback
+    
+    # Calculate position-wise consensus
+    consensus = []
+    for pos in range(most_common_length):
+        bases_at_pos = [seq[pos] for seq in filtered_seqs if pos < len(seq)]
+        
+        # Count each base
+        base_counts = {'A': 0, 'T': 0, 'G': 0, 'C': 0}
+        for base in bases_at_pos:
+            if base in base_counts:
+                base_counts[base] += 1
+        
+        # Find most common base or use IUPAC code
+        total_bases = sum(base_counts.values())
+        if total_bases == 0:
+            consensus.append('N')
+            continue
+            
+        # Calculate percentages
+        percentages = {base: count/total_bases for base, count in base_counts.items()}
+        
+        # Use IUPAC codes for ambiguous positions
+        if percentages['A'] >= 0.8:
+            consensus.append('A')
+        elif percentages['T'] >= 0.8:
+            consensus.append('T')
+        elif percentages['G'] >= 0.8:
+            consensus.append('G')
+        elif percentages['C'] >= 0.8:
+            consensus.append('C')
+        elif percentages['A'] + percentages['T'] >= 0.8:
+            consensus.append('W')  # A or T
+        elif percentages['G'] + percentages['C'] >= 0.8:
+            consensus.append('S')  # G or C
+        elif percentages['A'] + percentages['G'] >= 0.8:
+            consensus.append('R')  # A or G
+        elif percentages['C'] + percentages['T'] >= 0.8:
+            consensus.append('Y')  # C or T
+        else:
+            consensus.append('N')  # Highly variable
+    
+    return ''.join(consensus)
+
 def extract_motif_consensus(motif_id):
     """
     Extract the consensus sequence from motif_ID
@@ -232,29 +292,41 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
     
     print(f"Consolidated into {len(clusters)} motif clusters")
     
-    # Assign consolidated IDs
+    # Assign consolidated IDs and calculate true consensus
     consolidated_data = []
     
     for cluster_idx, cluster_motifs in enumerate(clusters):
         consolidated_id = f"MOTIF_{cluster_idx + 1:03d}"
         
-        # Get representative motif (most common one in cluster)
+        # Collect all actual sequences from this cluster
+        all_cluster_sequences = []
+        cluster_sites = []
+        
+        for motif in cluster_motifs:
+            for site in unique_motifs[motif]:
+                all_cluster_sequences.append(site['sequence'])
+                site_copy = site.copy()
+                site_copy['consolidated_motif_id'] = consolidated_id
+                site_copy['cluster_size'] = len(cluster_motifs)
+                site_copy['original_motif_consensus'] = motif  # Keep original STREME consensus
+                cluster_sites.append(site_copy)
+        
+        # Calculate true consensus from actual sequences
+        true_consensus = calculate_consensus_from_sequences(all_cluster_sequences)
+        
+        # Get most common original motif pattern for reference
         motif_counts = {}
         for motif in cluster_motifs:
             motif_counts[motif] = len(unique_motifs[motif])
+        most_common_original = max(motif_counts, key=motif_counts.get)
         
-        representative_motif = max(motif_counts, key=motif_counts.get)
+        # Update all sites in this cluster with true consensus
+        for site in cluster_sites:
+            site['motif_consensus'] = true_consensus  # True consensus from actual sequences
+            site['representative_sequence'] = most_common_original  # Most common STREME pattern
+            site['true_consensus'] = true_consensus  # Explicitly mark as calculated consensus
         
-        # Add all sites from this cluster
-        cluster_sites = []
-        for motif in cluster_motifs:
-            for site in unique_motifs[motif]:
-                site_copy = site.copy()
-                site_copy['consolidated_motif_id'] = consolidated_id
-                site_copy['representative_sequence'] = representative_motif
-                site_copy['cluster_size'] = len(cluster_motifs)
-                site_copy['motif_consensus'] = motif  # Add the consensus pattern
-                cluster_sites.append(site_copy)
+        print(f"  Cluster {consolidated_id}: {len(all_cluster_sequences)} sequences -> consensus: {true_consensus}")
         
         consolidated_data.extend(cluster_sites)
     
@@ -387,8 +459,8 @@ def write_comprehensive_output(consolidated_data, output_file):
     
     # Select and order columns
     output_columns = [
-        'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'line', 'gene_id',
-        'start_pos', 'end_pos', 'strand', 'score', 'sequence',
+        'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_motif_consensus', 
+        'line', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
         'representative_sequence', 'relative_position', 'total_motifs_in_gene',
         'relative_position_fraction', 'cluster_size', 'merged_count', 'length'
     ]
