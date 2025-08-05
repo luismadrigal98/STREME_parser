@@ -151,7 +151,7 @@ def calculate_sequence_variation_features(sequences, consensus):
         'mutation_load': mutation_load
     }
 
-def process_consolidated_motifs(tsv_file, expression_file=None, top_n_motifs=None, min_sites=10):
+def process_consolidated_motifs(tsv_file, expression_file=None, top_n_motifs=None, min_sites=10, simple_mode=False):
     """
     Process consolidated motif data into regression features
     
@@ -249,41 +249,55 @@ def process_consolidated_motifs(tsv_file, expression_file=None, top_n_motifs=Non
                 motif_sites = motifs_by_type.get(motif_id, [])
                 
                 if motif_sites:
-                    # Motif is present - calculate real features
-                    positions = [site['position'] for site in motif_sites]
-                    sequences = [site['sequence'] for site in motif_sites]
-                    consensus = motif_sites[0]['consensus']
-                    
-                    # Calculate positional features
-                    pos_features = calculate_position_features(positions)
-                    for key, value in pos_features.items():
-                        feature_name = f"{motif_id}_{key}"
-                        row_features[feature_name] = value
+                    # Motif is present
+                    if simple_mode:
+                        # Simple mode: only binary presence feature
+                        feature_name = f"{motif_id}_present"
+                        row_features[feature_name] = 1
                         feature_names.add(feature_name)
-                    
-                    # Calculate sequence variation features
-                    var_features = calculate_sequence_variation_features(sequences, consensus)
-                    for key, value in var_features.items():
-                        feature_name = f"{motif_id}_{key}"
-                        row_features[feature_name] = value
+                    else:
+                        # Full mode: calculate all features
+                        positions = [site['position'] for site in motif_sites]
+                        sequences = [site['sequence'] for site in motif_sites]
+                        consensus = motif_sites[0]['consensus']
+                        
+                        # Calculate positional features
+                        pos_features = calculate_position_features(positions)
+                        for key, value in pos_features.items():
+                            feature_name = f"{motif_id}_{key}"
+                            row_features[feature_name] = value
+                            feature_names.add(feature_name)
+                        
+                        # Calculate sequence variation features
+                        var_features = calculate_sequence_variation_features(sequences, consensus)
+                        for key, value in var_features.items():
+                            feature_name = f"{motif_id}_{key}"
+                            row_features[feature_name] = value
+                            feature_names.add(feature_name)
+                        
+                        # Binary presence feature
+                        feature_name = f"{motif_id}_present"
+                        row_features[feature_name] = 1
                         feature_names.add(feature_name)
-                    
-                    # Binary presence feature
-                    feature_name = f"{motif_id}_present"
-                    row_features[feature_name] = 1
-                    feature_names.add(feature_name)
                 
                 else:
-                    # Motif is NOT present - set all features to 0
-                    for suffix in ['motif_count', 'position_mean', 'position_std', 'position_min', 
-                                 'position_max', 'position_range', 'density_proximal', 'density_core', 
-                                 'density_distal', 'spacing_regularity', 'seq_diversity', 
-                                 'consensus_similarity_mean', 'consensus_similarity_std', 
-                                 'seq_length_mean', 'seq_length_std', 'gc_content_mean', 
-                                 'gc_content_std', 'mutation_load', 'present']:
-                        feature_name = f"{motif_id}_{suffix}"
+                    # Motif is NOT present - set features to 0
+                    if simple_mode:
+                        # Simple mode: only binary presence feature
+                        feature_name = f"{motif_id}_present"
                         row_features[feature_name] = 0
                         feature_names.add(feature_name)
+                    else:
+                        # Full mode: set all features to 0
+                        for suffix in ['motif_count', 'position_mean', 'position_std', 'position_min', 
+                                     'position_max', 'position_range', 'density_proximal', 'density_core', 
+                                     'density_distal', 'spacing_regularity', 'seq_diversity', 
+                                     'consensus_similarity_mean', 'consensus_similarity_std', 
+                                     'seq_length_mean', 'seq_length_std', 'gc_content_mean', 
+                                     'gc_content_std', 'mutation_load', 'present']:
+                            feature_name = f"{motif_id}_{suffix}"
+                            row_features[feature_name] = 0
+                            feature_names.add(feature_name)
             
             features.append(row_features)
     
@@ -455,6 +469,7 @@ Examples:
     parser.add_argument('--top-motifs', '-t', type=int, help='Include only top N most frequent motifs')
     parser.add_argument('--min-sites', '-m', type=int, default=10, help='Minimum sites required for motif inclusion (default: 10)')
     parser.add_argument('--output-prefix', '-o', default='motif_regression', help='Output file prefix (default: motif_regression)')
+    parser.add_argument('--simple', '-s', action='store_true', help='Generate only presence/absence features (binary)')
     
     args = parser.parse_args()
     
@@ -463,7 +478,8 @@ Examples:
         args.motif_file,
         expression_file=args.expression,
         top_n_motifs=args.top_motifs,
-        min_sites=args.min_sites
+        min_sites=args.min_sites,
+        simple_mode=args.simple
     )
     
     # Write output files

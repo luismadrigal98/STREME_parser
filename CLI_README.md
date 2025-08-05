@@ -7,8 +7,11 @@ A comprehensive toolkit for analyzing STREME motif discovery results across mult
 The pipeline provides a unified CLI tool that can run different analysis subprograms:
 
 ```bash
-# Basic usage
+# Basic usage - consolidate motifs
 ./meme consolidate /path/to/streme/results/ --output my_analysis
+
+# Extract features for machine learning
+./meme extract-features my_analysis/consolidated_streme_sites.tsv --simple
 
 # Or using Python directly
 python3 meme_pipeline.py consolidate /path/to/streme/results/ --output my_analysis
@@ -16,10 +19,10 @@ python3 meme_pipeline.py consolidate /path/to/streme/results/ --output my_analys
 
 ## Installation
 
-1. **Prerequisites**: Python 3.6+ with pandas
+1. **Prerequisites**: Python 3.6+ with pandas, numpy
 ```bash
 conda activate mycondaenv  # or your preferred environment
-pip install pandas
+pip install pandas numpy
 ```
 
 2. **Clone/Download** this repository
@@ -82,6 +85,38 @@ streme_results/
 #### Output Files:
 - `{output_prefix}.tsv` - Consolidated motif sites with 17 columns
 - `{output_prefix}_summary.txt` - Statistical summary of results
+
+### `extract-features` - Extract Regression Features
+
+Converts consolidated motif data into machine learning ready features for gene expression prediction.
+
+#### Key Features:
+- ✅ **Binary Mode**: Simple presence/absence features for each motif (--simple flag)
+- ✅ **Detailed Mode**: Comprehensive features including positional, sequence variation, and density metrics
+- ✅ **Expression Integration**: Optional expression data integration
+- ✅ **Motif Filtering**: Filter by frequency or select top N motifs
+- ✅ **Ready for ML**: Output format compatible with scikit-learn and other ML libraries
+
+#### Usage Examples:
+
+```bash
+# Simple binary features (presence/absence only)
+./meme extract-features consolidated_streme_sites.tsv --simple
+
+# Detailed features with expression data
+./meme extract-features consolidated_streme_sites.tsv \
+  --expression expression_data.tsv \
+  --top-motifs 100
+
+# Filter motifs by minimum occurrence
+./meme extract-features consolidated_streme_sites.tsv \
+  --min-sites 50 \
+  --output-prefix filtered_features
+```
+
+#### Feature Types:
+- **Simple Mode (--simple)**: Only binary presence/absence features
+- **Detailed Mode**: Positional features, sequence variation, GC content, density metrics, spacing regularity
 
 ### Future Commands (Coming Soon)
 
