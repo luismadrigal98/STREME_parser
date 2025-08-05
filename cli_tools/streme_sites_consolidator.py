@@ -252,12 +252,17 @@ def extract_motif_consensus(motif_id):
 
 def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
     """
-    Consolidate motifs based on motif_ID consensus patterns, not actual sequences found
+    Three-pass consolidation based on TRUE consensus patterns calculated from actual sequences:
+    1. Calculate true consensus for each STREME motif pattern
+    2. Cluster STREME motifs based on true consensus similarity  
+    3. Calculate final consensus from all sequences in each cluster
     """
-    print(f"Consolidating motifs using similarity threshold {similarity_threshold}")
+    print(f"Three-pass consolidation using similarity threshold {similarity_threshold}")
     
-    # Collect all unique motif consensus patterns
+    # PASS 1: Calculate true consensus for each original STREME motif
+    print("Pass 1: Calculating true consensus for each STREME motif...")
     unique_motifs = {}
+    motif_true_consensus = {}
     
     for site in all_sites:
         motif_consensus = extract_motif_consensus(site['original_motif_id'])
@@ -265,9 +270,17 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
             unique_motifs[motif_consensus] = []
         unique_motifs[motif_consensus].append(site)
     
-    print(f"Found {len(unique_motifs)} unique motif patterns before consolidation")
+    # Calculate true consensus for each STREME motif
+    for motif_pattern, sites in unique_motifs.items():
+        sequences = [site['sequence'] for site in sites]
+        true_consensus = calculate_consensus_from_sequences(sequences)
+        motif_true_consensus[motif_pattern] = true_consensus
+        print(f"  {motif_pattern} -> {true_consensus} (from {len(sequences)} sequences)")
     
-    # Cluster similar motif consensus patterns
+    print(f"Found {len(unique_motifs)} unique STREME motif patterns")
+    
+    # PASS 2: Cluster based on TRUE consensus patterns
+    print("Pass 2: Clustering based on true consensus patterns...")
     clusters = []
     processed_motifs = set()
     
@@ -278,21 +291,25 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
         # Start new cluster
         cluster_motifs = [motif1]
         processed_motifs.add(motif1)
+        true_consensus_1 = motif_true_consensus[motif1]
         
-        # Find similar motif patterns
+        # Find similar TRUE consensus patterns
         for motif2 in unique_motifs:
             if motif2 in processed_motifs:
                 continue
-                
-            if sequences_are_similar(motif1, motif2, similarity_threshold):
+            
+            true_consensus_2 = motif_true_consensus[motif2]
+            
+            if sequences_are_similar(true_consensus_1, true_consensus_2, similarity_threshold):
                 cluster_motifs.append(motif2)
                 processed_motifs.add(motif2)
+                print(f"  Clustered {motif1} ({true_consensus_1}) with {motif2} ({true_consensus_2})")
         
         clusters.append(cluster_motifs)
     
-    print(f"Consolidated into {len(clusters)} motif clusters")
+    print(f"Consolidated into {len(clusters)} motif clusters based on true consensus")
     
-    # Assign consolidated IDs and calculate true consensus
+    # PASS 3: Assign consolidated IDs and calculate final true consensus per cluster
     consolidated_data = []
     
     for cluster_idx, cluster_motifs in enumerate(clusters):
@@ -311,8 +328,8 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
                 site_copy['original_motif_consensus'] = motif  # Keep original STREME consensus
                 cluster_sites.append(site_copy)
         
-        # Calculate true consensus from actual sequences
-        true_consensus = calculate_consensus_from_sequences(all_cluster_sequences)
+        # Calculate final true consensus from ALL sequences in the cluster
+        final_true_consensus = calculate_consensus_from_sequences(all_cluster_sequences)
         
         # Get most common original motif pattern for reference
         motif_counts = {}
@@ -320,13 +337,14 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
             motif_counts[motif] = len(unique_motifs[motif])
         most_common_original = max(motif_counts, key=motif_counts.get)
         
-        # Update all sites in this cluster with true consensus
+        # Update all sites in this cluster
         for site in cluster_sites:
-            site['motif_consensus'] = true_consensus  # True consensus from actual sequences
+            site['motif_consensus'] = final_true_consensus  # Final consensus from ALL sequences
             site['representative_sequence'] = most_common_original  # Most common STREME pattern
-            site['true_consensus'] = true_consensus  # Explicitly mark as calculated consensus
+            site['true_consensus'] = final_true_consensus  # Explicitly mark as calculated consensus
         
-        print(f"  Cluster {consolidated_id}: {len(all_cluster_sequences)} sequences -> consensus: {true_consensus}")
+        if len(cluster_motifs) > 1:
+            print(f"  Cluster {consolidated_id}: {len(cluster_motifs)} STREME motifs -> {len(all_cluster_sequences)} sequences -> final consensus: {final_true_consensus}")
         
         consolidated_data.extend(cluster_sites)
     
@@ -507,8 +525,8 @@ def write_summary_statistics(df, summary_file):
         f.write("## Top 20 Most Common Motifs\n")
         motif_freq = df['consolidated_motif_id'].value_counts().head(20)
         for motif, count in motif_freq.items():
-            repr_seq = df[df['consolidated_motif_id'] == motif]['representative_sequence'].iloc[0]
-            f.write(f"{motif}\t{repr_seq}\t{count} sites\n")
+            true_consensus = df[df['consolidated_motif_id'] == motif]['motif_consensus'].iloc[0]
+            f.write(f"{motif}\t{true_consensus}\t{count} sites\n")
 
 def main():
     parser = argparse.ArgumentParser(
