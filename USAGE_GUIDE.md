@@ -51,6 +51,21 @@ python3 cli_tools/streme_sites_consolidator.py \
     --lines IM502,IM664,IM767 \
     --output subset_analysis \
     --verbose
+
+# Merge overlapping motif hits (default: enabled)
+python3 cli_tools/streme_sites_consolidator.py \
+    ../All_lines/ \
+    --merge-overlaps \
+    --overlap-threshold 0.5 \
+    --output merged_analysis \
+    --verbose
+
+# Disable overlap merging (keep all individual hits)
+python3 cli_tools/streme_sites_consolidator.py \
+    ../All_lines/ \
+    --no-merge-overlaps \
+    --output unmerged_analysis \
+    --verbose
 ```
 
 **Expected output:**

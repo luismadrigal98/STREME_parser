@@ -70,6 +70,10 @@ The consolidated TSV file contains the following 16 columns, providing comprehen
 **Format:** Integer (e.g., `8`, `11`, `15`)
 **Description:** The length of the motif sequence in base pairs. Calculated as `end_pos - start_pos + 1`. Indicates the size of the regulatory element.
 
+### 17. `merged_count`
+**Format:** Integer (e.g., `1`, `3`, `5`)
+**Description:** The number of overlapping motif hits that were merged into this entry. A value of `1` indicates no overlapping hits were found. Higher values indicate that multiple overlapping STREME detections of the same motif type in the same gene were consolidated into a single region. This is particularly useful for identifying poly-nucleotide tracts (poly-A, poly-T, etc.) where STREME often detects multiple overlapping hits with sliding windows.
+
 ## Usage Examples
 
 ### Finding genes with multiple regulatory elements:
@@ -88,6 +92,19 @@ cut -f1 consolidated_motifs.tsv | sort | uniq -c | sort -nr
 ```bash
 # Average motifs per gene by line
 awk -F'\t' 'NR>1 {sum[$4] += $13; count[$4]++} END {for(line in sum) print line, sum[line]/count[line]}' consolidated_motifs.tsv
+```
+
+### Identifying heavily merged regions (poly-nucleotide tracts):
+```bash
+# Find motifs that were merged from many overlapping hits
+awk -F'\t' '$17 > 3' consolidated_motifs.tsv | cut -f1,2,5,6,7,17 | head -10
+```
+
+### Quality control for overlap merging:
+```bash
+# Check distribution of merged_count values
+cut -f17 consolidated_motifs.tsv | sort -n | uniq -c
+# Most should be 1 (no merging), higher values indicate repetitive regions
 ```
 
 ## Quality Control Notes
