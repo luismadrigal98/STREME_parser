@@ -7,22 +7,73 @@ Your data should be organized like this:
 ```
 your_project/
 ├── streme_results/
-│   ├── streme_IM502/
-│   │   └── streme.txt
-│   ├── streme_IM664/
-│   │   └── streme.txt
-│   ├── streme_IM767/
-│   │   └── streme.txt
-│   └── streme_IM1034/
-│       └── streme.txt
-└── gene_sequences/
+│   ├── streme_Genes_IM502_DNA_lifted/
+│   │   ├── sites.tsv       # <- This is what we need!
+│   │   ├── streme.txt
+│   │   └── streme.html
+│   ├── streme_Genes_IM664_DNA_lifted/
+│   │   ├── sites.tsv       # <- Position data per motif
+│   │   └── ...
+│   └── streme_Genes_IM767_DNA_lifted/
+│       ├── sites.tsv       # <- Exact sequences found
+│       └── ...
+└── gene_sequences/         # Optional for this analysis
     ├── Genes_IM502_DNA_lifted.fasta
-    ├── Genes_IM664_DNA_lifted.fasta
-    ├── Genes_IM767_DNA_lifted.fasta
-    └── Genes_IM1034_DNA_lifted.fasta
+    └── ...
 ```
 
-### Method 1: Step-by-Step Analysis
+### Method 1: New STREME Sites Analysis (Recommended!)
+
+#### Use the New Sites-Based Consolidator
+```bash
+cd /path/to/MEME_related/Python/
+
+# Basic analysis - processes all lines
+python3 cli_tools/streme_sites_consolidator.py \
+    ../All_lines/ \
+    --output comprehensive_motif_analysis \
+    --verbose
+
+# Custom similarity threshold
+python3 cli_tools/streme_sites_consolidator.py \
+    ../All_lines/ \
+    --threshold 0.8 \
+    --output high_stringency_analysis \
+    --verbose
+
+# Process specific lines only
+python3 cli_tools/streme_sites_consolidator.py \
+    ../All_lines/ \
+    --lines IM502,IM664,IM767 \
+    --output subset_analysis \
+    --verbose
+```
+
+**Expected output:**
+```
+=== STREME Sites Consolidator ===
+Input directory: ../All_lines/
+Similarity threshold: 0.75
+Output prefix: comprehensive_motif_analysis
+
+Found 10 STREME directories to process
+  Processing streme_Genes_IM502_DNA_lifted/sites.tsv for line IM502
+    Found 287 motif sites
+  Processing streme_Genes_IM664_DNA_lifted/sites.tsv for line IM664
+    Found 312 motif sites
+  [... processing all 10 lines ...]
+
+Total sites collected: 2847
+Consolidating motifs using similarity threshold 0.75
+Found 1243 unique sequences before consolidation
+Consolidated into 156 motif clusters
+
+Results written to:
+- comprehensive_motif_analysis.tsv
+- comprehensive_motif_analysis_summary.txt
+```
+
+### Method 2: Legacy Step-by-Step Analysis
 
 #### Step 1: Consolidate all motifs across lines
 ```bash

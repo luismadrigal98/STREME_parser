@@ -10,6 +10,7 @@ gene-level regulatory maps with exact positions and sequences.
 import os
 import re
 import sys
+import csv
 import argparse
 import pandas as pd
 from pathlib import Path
@@ -70,6 +71,24 @@ def sequences_are_similar(seq1, seq2, threshold=0.75):
     
     return similarity >= threshold
 
+def extract_line_name(directory_name):
+    """
+    Extract clean line name from STREME directory name
+    Examples:
+    - streme_Genes_IM155_DNA_lifted -> IM155
+    - streme_IM502 -> IM502
+    """
+    # Remove 'streme_' prefix
+    name = directory_name.replace('streme_', '')
+    
+    # Extract IM number using regex
+    match = re.search(r'IM\d+', name)
+    if match:
+        return match.group()
+    
+    # Fallback: return the cleaned name
+    return name
+
 def parse_sites_file(sites_file, line_name):
     """
     Parse a STREME sites.tsv file and return structured data
@@ -77,104 +96,164 @@ def parse_sites_file(sites_file, line_name):
     print(f"  Processing {sites_file} for line {line_name}")
     
     try:
-        # Read the TSV file
-        df = pd.read_csv(sites_file, sep='\t')
+        # Read the TSV file manually to handle NaN values better
+        sites_data = []
+        
+        with open(sites_file, 'r') as f:
+            lines = f.readlines()
+        
+        if not lines:
+            print(f"    Warning: Empty file {sites_file}")
+            return []
+        
+        # Parse header
+        header = lines[0].strip().split('\t')
         
         # Validate required columns
         required_cols = ['motif_ID', 'seq_ID', 'site_Start', 'site_End', 'site_Strand', 'site_Score', 'site_Sequence']
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            print(f"Warning: Missing columns in {sites_file}: {missing_cols}")
-            return []
+        col_indices = {}
         
-        sites_data = []
+        for col in required_cols:
+            if col in header:
+                col_indices[col] = header.index(col)
+            else:
+                print(f"Warning: Missing column '{col}' in {sites_file}")
+                return []
         
-        for _, row in df.iterrows():
-            site_data = {
-                'original_motif_id': row['motif_ID'],
-                'line': line_name,
-                'gene_id': row['seq_ID'],
-                'start_pos': int(row['site_Start']),
-                'end_pos': int(row['site_End']),
-                'strand': row['site_Strand'],
-                'score': float(row['site_Score']),
-                'sequence': row['site_Sequence'].upper(),
-                'motif_alt_id': row.get('motif_ALT_ID', ''),
-                'length': len(row['site_Sequence'])
-            }
-            sites_data.append(site_data)
+        # Parse data rows
+        for line_num, line in enumerate(lines[1:], 2):
+            if not line.strip():
+                continue
+            
+            # Skip comment lines (STREME motif separators)
+            if line.strip().startswith('#'):
+                continue
+                
+            fields = line.strip().split('\t')
+            
+            try:
+                # Check if we have enough fields
+                if len(fields) < len(col_indices):
+                    print(f"    Skipping line {line_num}: insufficient columns ({len(fields)} < {len(col_indices)})")
+                    continue
+                
+                # Check for missing or NaN values
+                start_val = fields[col_indices['site_Start']]
+                end_val = fields[col_indices['site_End']]
+                score_val = fields[col_indices['site_Score']]
+                sequence_val = fields[col_indices['site_Sequence']]
+                motif_id_val = fields[col_indices['motif_ID']]
+                
+                # Skip rows with missing essential data
+                if (start_val in ['', 'NaN', 'nan'] or 
+                    end_val in ['', 'NaN', 'nan'] or 
+                    score_val in ['', 'NaN', 'nan'] or 
+                    sequence_val in ['', 'NaN', 'nan'] or
+                    motif_id_val in ['', 'NaN', 'nan']):
+                    print(f"    Skipping line {line_num}: missing essential data")
+                    continue
+                
+                site_data = {
+                    'original_motif_id': motif_id_val,
+                    'line': line_name,
+                    'gene_id': fields[col_indices['seq_ID']],
+                    'start_pos': int(float(start_val)),  # Convert via float first to handle decimal strings
+                    'end_pos': int(float(end_val)),
+                    'strand': fields[col_indices['site_Strand']],
+                    'score': float(score_val),
+                    'sequence': sequence_val.upper(),
+                    'motif_alt_id': fields[col_indices.get('motif_ALT_ID', 0)] if 'motif_ALT_ID' in col_indices else '',
+                    'length': len(sequence_val)
+                }
+                sites_data.append(site_data)
+                
+            except (ValueError, IndexError) as e:
+                print(f"    Skipping line {line_num}: {e}")
+                continue
         
-        print(f"    Found {len(sites_data)} motif sites")
+        print(f"    Found {len(sites_data)} valid motif sites")
         return sites_data
         
     except Exception as e:
         print(f"Error processing {sites_file}: {e}")
         return []
 
+def extract_motif_consensus(motif_id):
+    """
+    Extract the consensus sequence from motif_ID
+    Examples:
+    - 1-AAAARAAAAAAAAAA -> AAAARAAAAAAAAAA
+    - 2-CCCCGTTTTCCCCCC -> CCCCGTTTTCCCCCC
+    """
+    # Remove numerical prefix (e.g., "1-", "2-", etc.)
+    if '-' in motif_id:
+        return motif_id.split('-', 1)[1]
+    return motif_id
+
 def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
     """
-    Consolidate motifs based on actual sequences found, not just consensus
+    Consolidate motifs based on motif_ID consensus patterns, not actual sequences found
     """
     print(f"Consolidating motifs using similarity threshold {similarity_threshold}")
     
-    # Collect all unique sequences
-    unique_sequences = {}
-    sequence_to_cluster = {}
+    # Collect all unique motif consensus patterns
+    unique_motifs = {}
     
     for site in all_sites:
-        seq = site['sequence']
-        if seq not in unique_sequences:
-            unique_sequences[seq] = []
-        unique_sequences[seq].append(site)
+        motif_consensus = extract_motif_consensus(site['original_motif_id'])
+        if motif_consensus not in unique_motifs:
+            unique_motifs[motif_consensus] = []
+        unique_motifs[motif_consensus].append(site)
     
-    print(f"Found {len(unique_sequences)} unique sequences before consolidation")
+    print(f"Found {len(unique_motifs)} unique motif patterns before consolidation")
     
-    # Cluster similar sequences
+    # Cluster similar motif consensus patterns
     clusters = []
-    processed_sequences = set()
+    processed_motifs = set()
     
-    for seq1 in unique_sequences:
-        if seq1 in processed_sequences:
+    for motif1 in unique_motifs:
+        if motif1 in processed_motifs:
             continue
             
         # Start new cluster
-        cluster_sequences = [seq1]
-        processed_sequences.add(seq1)
+        cluster_motifs = [motif1]
+        processed_motifs.add(motif1)
         
-        # Find similar sequences
-        for seq2 in unique_sequences:
-            if seq2 in processed_sequences:
+        # Find similar motif patterns
+        for motif2 in unique_motifs:
+            if motif2 in processed_motifs:
                 continue
                 
-            if sequences_are_similar(seq1, seq2, similarity_threshold):
-                cluster_sequences.append(seq2)
-                processed_sequences.add(seq2)
+            if sequences_are_similar(motif1, motif2, similarity_threshold):
+                cluster_motifs.append(motif2)
+                processed_motifs.add(motif2)
         
-        clusters.append(cluster_sequences)
+        clusters.append(cluster_motifs)
     
     print(f"Consolidated into {len(clusters)} motif clusters")
     
     # Assign consolidated IDs
     consolidated_data = []
     
-    for cluster_idx, cluster_seqs in enumerate(clusters):
+    for cluster_idx, cluster_motifs in enumerate(clusters):
         consolidated_id = f"MOTIF_{cluster_idx + 1:03d}"
         
-        # Get representative sequence (most common one in cluster)
-        seq_counts = {}
-        for seq in cluster_seqs:
-            seq_counts[seq] = len(unique_sequences[seq])
+        # Get representative motif (most common one in cluster)
+        motif_counts = {}
+        for motif in cluster_motifs:
+            motif_counts[motif] = len(unique_motifs[motif])
         
-        representative_seq = max(seq_counts, key=seq_counts.get)
+        representative_motif = max(motif_counts, key=motif_counts.get)
         
         # Add all sites from this cluster
         cluster_sites = []
-        for seq in cluster_seqs:
-            for site in unique_sequences[seq]:
+        for motif in cluster_motifs:
+            for site in unique_motifs[motif]:
                 site_copy = site.copy()
                 site_copy['consolidated_motif_id'] = consolidated_id
-                site_copy['representative_sequence'] = representative_seq
-                site_copy['cluster_size'] = len(cluster_seqs)
+                site_copy['representative_sequence'] = representative_motif
+                site_copy['cluster_size'] = len(cluster_motifs)
+                site_copy['motif_consensus'] = motif  # Add the consensus pattern
                 cluster_sites.append(site_copy)
         
         consolidated_data.extend(cluster_sites)
@@ -221,7 +300,7 @@ def write_comprehensive_output(consolidated_data, output_file):
     
     # Select and order columns
     output_columns = [
-        'consolidated_motif_id', 'original_motif_id', 'line', 'gene_id',
+        'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'line', 'gene_id',
         'start_pos', 'end_pos', 'strand', 'score', 'sequence',
         'representative_sequence', 'relative_position', 'total_motifs_in_gene',
         'relative_position_fraction', 'cluster_size', 'length'
@@ -343,8 +422,8 @@ Input Directory Structure:
     
     for item in results_dir.iterdir():
         if item.is_dir() and item.name.startswith('streme_'):
-            # Extract line name
-            line_name = item.name.replace('streme_', '')
+            # Extract line name properly
+            line_name = extract_line_name(item.name)
             
             # Skip if not in target lines
             if target_lines and line_name not in target_lines:
