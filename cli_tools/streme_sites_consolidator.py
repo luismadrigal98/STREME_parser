@@ -12,6 +12,7 @@ import re
 import sys
 import csv
 import argparse
+import subprocess
 from pathlib import Path
 from collections import defaultdict
 
@@ -859,6 +860,38 @@ def run_consolidation(args):
     
     return output_file
 
+def run_feature_generation(args):
+    """Run the feature generation process"""
+    import subprocess
+    import sys
+    
+    # Build command to run the feature generation script
+    script_path = Path(__file__).parent / "motif_to_regression_features.py"
+    
+    cmd = [sys.executable, str(script_path), args.motif_file]
+    
+    if hasattr(args, 'expression') and args.expression:
+        cmd.extend(['--expression', args.expression])
+    
+    if hasattr(args, 'top_motifs') and args.top_motifs:
+        cmd.extend(['--top-motifs', str(args.top_motifs)])
+    
+    if hasattr(args, 'min_sites') and args.min_sites:
+        cmd.extend(['--min-sites', str(args.min_sites)])
+    
+    if hasattr(args, 'output_prefix') and args.output_prefix:
+        cmd.extend(['--output-prefix', args.output_prefix])
+    
+    try:
+        subprocess.run(cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Feature generation failed: {e}")
+        return False
+    except FileNotFoundError:
+        print(f"Feature generation script not found: {script_path}")
+        return False
+
 def main():
     parser = argparse.ArgumentParser(
         description='STREME Sites Consolidator - Consolidate and validate motif data',
@@ -968,6 +1001,55 @@ Examples:
         help='Show detailed analysis for all clusters'
     )
     
+    # Features command
+    features_parser = subparsers.add_parser(
+        'features',
+        help='Convert consolidated motifs to regression features',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic feature generation
+  %(prog)s features consolidated_streme_sites.tsv
+
+  # Include expression data and select top 100 motifs
+  %(prog)s features consolidated_streme_sites.tsv \\
+    --expression expression_data.tsv --top-motifs 100
+
+  # Filter motifs with minimum 50 sites
+  %(prog)s features consolidated_streme_sites.tsv \\
+    --min-sites 50 --output-prefix my_analysis
+        """
+    )
+    
+    features_parser.add_argument(
+        'motif_file',
+        help='Consolidated motif TSV file (output from consolidate command)'
+    )
+    
+    features_parser.add_argument(
+        '--expression', '-e',
+        help='Expression data file (TSV with line, gene, expression columns)'
+    )
+    
+    features_parser.add_argument(
+        '--top-motifs', '-t',
+        type=int,
+        help='Include only top N most frequent motifs'
+    )
+    
+    features_parser.add_argument(
+        '--min-sites',
+        type=int,
+        default=10,
+        help='Minimum sites required for motif inclusion (default: 10)'
+    )
+    
+    features_parser.add_argument(
+        '--output-prefix', '-o',
+        default='motif_regression',
+        help='Output file prefix (default: motif_regression)'
+    )
+    
     args = parser.parse_args()
     
     # Handle different commands
@@ -991,6 +1073,14 @@ Examples:
             sys.exit(1)
         
         success = run_validation(args.tsv_file)
+        sys.exit(0 if success else 1)
+    
+    elif args.command == 'features':
+        if not Path(args.motif_file).exists():
+            print(f"Error: File {args.motif_file} does not exist")
+            sys.exit(1)
+        
+        success = run_feature_generation(args)
         sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
