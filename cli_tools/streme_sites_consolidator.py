@@ -325,7 +325,7 @@ def consolidate_motifs_by_sequence(all_sites, similarity_threshold=0.75):
                 site_copy = site.copy()
                 site_copy['consolidated_motif_id'] = consolidated_id
                 site_copy['cluster_size'] = len(cluster_motifs)
-                site_copy['original_motif_consensus'] = motif  # Keep original STREME consensus
+                site_copy['original_streme_consensus'] = motif  # Keep original STREME consensus
                 cluster_sites.append(site_copy)
         
         # Calculate final true consensus from ALL sequences in the cluster
