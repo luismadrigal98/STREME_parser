@@ -16,11 +16,11 @@ The consolidated TSV file contains the following 16 columns, providing comprehen
 
 ### 3. `motif_consensus`
 **Format:** `AAAAWMWTTTT`, `RRRWRAANAARRARNA`, etc.
-**Description:** The **true consensus sequence** calculated from all actual sequences that were consolidated into this motif cluster. This is computed from the real genomic sequences found, not the STREME consensus pattern. Uses IUPAC nucleotide codes (W=A/T, R=A/G, etc.) to represent variation. This gives a more accurate representation of the actual motif pattern.
+**Description:** The **true consensus sequence** calculated from all actual genomic sequences that were consolidated into this motif cluster. This is computed using a three-pass algorithm from the real sequences found in the genome, not the STREME consensus pattern. Uses IUPAC nucleotide codes (W=A/T, R=A/G, etc.) to represent variation. This gives the most accurate representation of the actual motif pattern.
 
-### 4. `original_motif_consensus`
+### 4. `original_streme_consensus`
 **Format:** `AAAAWMWTTTT`, `CGCGCGCG`, etc.
-**Description:** The original consensus sequence pattern from STREME (with numeric prefix removed). This preserves the original STREME consensus for comparison and traceability, but may not accurately represent all sequences that were consolidated together.
+**Description:** The original consensus sequence pattern from STREME (with numeric prefix removed). This preserves the original STREME consensus for comparison and traceability. Note that this may not accurately represent all sequences that were consolidated together, as STREME sometimes groups dissimilar sequences.
 
 ### 5. `line`
 **Format:** `DPR_14`, `SWB_2`, `YOD_7`, etc.

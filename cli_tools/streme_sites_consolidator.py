@@ -476,10 +476,10 @@ def write_comprehensive_output(consolidated_data, output_file):
     
     # Select and order columns
     output_columns = [
-        'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_motif_consensus', 
+        'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus', 
         'line', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
-        'representative_sequence', 'relative_position', 'total_motifs_in_gene',
-        'relative_position_fraction', 'cluster_size', 'merged_count', 'length'
+        'relative_position', 'total_motifs_in_gene', 'relative_position_fraction', 
+        'cluster_size', 'merged_count', 'length'
     ]
     
     # Ensure all columns exist
