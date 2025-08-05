@@ -12,9 +12,14 @@ import re
 import sys
 import csv
 import argparse
-import pandas as pd
 from pathlib import Path
 from collections import defaultdict
+
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
 
 def expand_iupac_for_comparison(seq1, seq2):
     """
@@ -468,28 +473,64 @@ def write_comprehensive_output(consolidated_data, output_file):
     """
     print(f"Writing comprehensive results to {output_file}")
     
-    # Convert to DataFrame for easy manipulation
-    df = pd.DataFrame(consolidated_data)
-    
-    # Sort by consolidated motif ID, then by line, then by gene, then by position
-    df = df.sort_values(['consolidated_motif_id', 'line', 'gene_id', 'start_pos'])
-    
-    # Select and order columns
-    output_columns = [
-        'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus', 
-        'line', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
-        'relative_position', 'total_motifs_in_gene', 'relative_position_fraction', 
-        'cluster_size', 'merged_count', 'length'
-    ]
-    
-    # Ensure all columns exist
-    for col in output_columns:
-        if col not in df.columns:
-            df[col] = ''
-    
-    df[output_columns].to_csv(output_file, sep='\t', index=False)
-    
-    return df
+    if HAS_PANDAS:
+        # Use pandas for sorting and manipulation if available
+        df = pd.DataFrame(consolidated_data)
+        
+        # Sort by consolidated motif ID, then by line, then by gene, then by position
+        df = df.sort_values(['consolidated_motif_id', 'line', 'gene_id', 'start_pos'])
+        
+        # Select and order columns
+        output_columns = [
+            'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus', 
+            'line', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
+            'relative_position', 'total_motifs_in_gene', 'relative_position_fraction', 
+            'cluster_size', 'merged_count', 'length'
+        ]
+        
+        # Ensure all columns exist
+        for col in output_columns:
+            if col not in df.columns:
+                df[col] = ''
+        
+        df[output_columns].to_csv(output_file, sep='\t', index=False)
+        return df
+    else:
+        # Fallback to manual CSV writing without pandas
+        # Sort data manually
+        consolidated_data.sort(key=lambda x: (x.get('consolidated_motif_id', ''), 
+                                            x.get('line', ''), 
+                                            x.get('gene_id', ''), 
+                                            x.get('start_pos', 0)))
+        
+        output_columns = [
+            'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus', 
+            'line', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
+            'relative_position', 'total_motifs_in_gene', 'relative_position_fraction', 
+            'cluster_size', 'merged_count', 'length'
+        ]
+        
+        with open(output_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=output_columns, delimiter='\t')
+            writer.writeheader()
+            for row in consolidated_data:
+                # Ensure all columns exist in row
+                output_row = {col: row.get(col, '') for col in output_columns}
+                writer.writerow(output_row)
+        
+        # Return simple dict-like object for consistency
+        class SimpleDataFrame:
+            def __init__(self, data):
+                self.data = data
+            
+            def nunique(self, column):
+                values = set(row.get(column) for row in self.data if row.get(column))
+                return len(values)
+            
+            def __len__(self):
+                return len(self.data)
+        
+        return SimpleDataFrame(consolidated_data)
 
 def write_summary_statistics(df, summary_file):
     """
@@ -500,108 +541,245 @@ def write_summary_statistics(df, summary_file):
     with open(summary_file, 'w') as f:
         f.write("# STREME Sites Consolidation Summary\n\n")
         
-        # Basic statistics
-        f.write(f"Total motif sites: {len(df)}\n")
-        f.write(f"Unique consolidated motifs: {df['consolidated_motif_id'].nunique()}\n")
-        f.write(f"Lines analyzed: {df['line'].nunique()}\n")
-        f.write(f"Genes with motifs: {df['gene_id'].nunique()}\n\n")
-        
-        # Per-line statistics
-        f.write("## Statistics by Line\n")
-        line_stats = df.groupby('line').agg({
-            'gene_id': 'nunique',
-            'consolidated_motif_id': 'nunique',
-            'sequence': 'count'
-        }).rename(columns={
-            'gene_id': 'Genes_with_motifs',
-            'consolidated_motif_id': 'Unique_motifs',
-            'sequence': 'Total_sites'
-        })
-        f.write(line_stats.to_string())
-        f.write("\n\n")
-        
-        # Motif frequency
-        f.write("## Top 20 Most Common Motifs\n")
-        motif_freq = df['consolidated_motif_id'].value_counts().head(20)
-        for motif, count in motif_freq.items():
-            true_consensus = df[df['consolidated_motif_id'] == motif]['motif_consensus'].iloc[0]
-            f.write(f"{motif}\t{true_consensus}\t{count} sites\n")
+        if HAS_PANDAS and hasattr(df, 'groupby'):
+            # Use pandas functionality
+            f.write(f"Total motif sites: {len(df)}\n")
+            f.write(f"Unique consolidated motifs: {df['consolidated_motif_id'].nunique()}\n")
+            f.write(f"Lines analyzed: {df['line'].nunique()}\n")
+            f.write(f"Genes with motifs: {df['gene_id'].nunique()}\n\n")
+            
+            # Per-line statistics
+            f.write("## Statistics by Line\n")
+            line_stats = df.groupby('line').agg({
+                'gene_id': 'nunique',
+                'consolidated_motif_id': 'nunique',
+                'sequence': 'count'
+            }).rename(columns={
+                'gene_id': 'Genes_with_motifs',
+                'consolidated_motif_id': 'Unique_motifs',
+                'sequence': 'Total_sites'
+            })
+            f.write(line_stats.to_string())
+            f.write("\n\n")
+            
+            # Motif frequency
+            f.write("## Top 20 Most Common Motifs\n")
+            motif_freq = df['consolidated_motif_id'].value_counts().head(20)
+            for motif, count in motif_freq.items():
+                true_consensus = df[df['consolidated_motif_id'] == motif]['motif_consensus'].iloc[0]
+                f.write(f"{motif}\t{true_consensus}\t{count} sites\n")
+        else:
+            # Manual statistics calculation
+            data = df.data if hasattr(df, 'data') else df
+            
+            f.write(f"Total motif sites: {len(data)}\n")
+            f.write(f"Unique consolidated motifs: {len(set(row.get('consolidated_motif_id') for row in data))}\n")
+            f.write(f"Lines analyzed: {len(set(row.get('line') for row in data))}\n")
+            f.write(f"Genes with motifs: {len(set(row.get('gene_id') for row in data))}\n\n")
+            
+            # Basic motif frequency
+            f.write("## Most Common Motifs\n")
+            motif_counts = defaultdict(int)
+            motif_consensus_map = {}
+            for row in data:
+                motif_id = row.get('consolidated_motif_id')
+                if motif_id:
+                    motif_counts[motif_id] += 1
+                    if motif_id not in motif_consensus_map:
+                        motif_consensus_map[motif_id] = row.get('motif_consensus', '')
+            
+            # Sort by count and take top 20
+            sorted_motifs = sorted(motif_counts.items(), key=lambda x: x[1], reverse=True)[:20]
+            for motif, count in sorted_motifs:
+                consensus = motif_consensus_map.get(motif, '')
+                f.write(f"{motif}\t{consensus}\t{count} sites\n")
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Consolidate STREME sites.tsv files across multiple lines',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Basic consolidation
-  %(prog)s /path/to/streme/results/ --output consolidated_sites
-  
-  # With custom similarity threshold
-  %(prog)s /path/to/streme/results/ --threshold 0.8 --output results/
-  
-  # Process specific lines only
-  %(prog)s /path/to/streme/results/ --lines IM502,IM664 --output targeted/
+def analyze_motif_cluster(motif_id, sites):
+    """
+    Analyze a single motif cluster to see if sequences are appropriately grouped
+    """
+    sequences = [site['sequence'] for site in sites]
+    streme_patterns = set(site['original_streme_consensus'] for site in sites)
+    
+    # Calculate sequence diversity metrics
+    unique_sequences = set(sequences)
+    seq_lengths = [len(seq) for seq in sequences]
+    
+    # Check base composition variability
+    base_compositions = []
+    for seq in sequences[:50]:  # Sample first 50 to avoid too much computation
+        total_len = len(seq)
+        if total_len > 0:
+            comp = {
+                'A': seq.count('A') / total_len,
+                'T': seq.count('T') / total_len,
+                'G': seq.count('G') / total_len,
+                'C': seq.count('C') / total_len
+            }
+            base_compositions.append(comp)
+    
+    # Calculate composition variance (simple measure of diversity)
+    if base_compositions:
+        avg_A = sum(comp['A'] for comp in base_compositions) / len(base_compositions)
+        avg_T = sum(comp['T'] for comp in base_compositions) / len(base_compositions)
+        avg_G = sum(comp['G'] for comp in base_compositions) / len(base_compositions)
+        avg_C = sum(comp['C'] for comp in base_compositions) / len(base_compositions)
+        
+        # Calculate variance for each base
+        var_A = sum((comp['A'] - avg_A)**2 for comp in base_compositions) / len(base_compositions)
+        var_T = sum((comp['T'] - avg_T)**2 for comp in base_compositions) / len(base_compositions)
+        var_G = sum((comp['G'] - avg_G)**2 for comp in base_compositions) / len(base_compositions)
+        var_C = sum((comp['C'] - avg_C)**2 for comp in base_compositions) / len(base_compositions)
+        
+        total_variance = var_A + var_T + var_G + var_C
+    else:
+        total_variance = 0
+    
+    return {
+        'total_sites': len(sites),
+        'unique_sequences': len(unique_sequences),
+        'sequence_diversity': len(unique_sequences) / len(sites) if sites else 0,
+        'streme_patterns_merged': len(streme_patterns),
+        'streme_patterns': list(streme_patterns),
+        'length_range': (min(seq_lengths), max(seq_lengths)) if seq_lengths else (0, 0),
+        'composition_variance': total_variance,
+        'sample_sequences': sequences[:5],  # First 5 sequences as examples
+        'consensus': sites[0]['motif_consensus'] if sites else '',
+        'cluster_size': sites[0]['cluster_size'] if sites else 0
+    }
 
-Input Directory Structure:
-  streme_results/
-  ├── streme_IM502/sites.tsv
-  ├── streme_IM664/sites.tsv
-  └── streme_IM767/sites.tsv
-        """
-    )
+def run_validation(tsv_file):
+    """
+    Validate motif consolidation by analyzing the consolidated_streme_sites.tsv output.
+    """
+    print("=== MOTIF CONSOLIDATION VALIDATION ===")
+    print(f"Analyzing: {tsv_file}")
+    print()
     
-    parser.add_argument(
-        'streme_results_dir',
-        help='Directory containing STREME output folders with sites.tsv files'
-    )
+    # Read the consolidated data
+    motif_clusters = defaultdict(list)
     
-    parser.add_argument(
-        '--output', '-o',
-        default='consolidated_streme_sites',
-        help='Output file prefix (default: consolidated_streme_sites)'
-    )
+    try:
+        with open(tsv_file, 'r') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            for row in reader:
+                motif_id = row['consolidated_motif_id']
+                motif_clusters[motif_id].append(row)
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return False
     
-    parser.add_argument(
-        '--threshold', '-t',
-        type=float,
-        default=0.75,
-        help='Similarity threshold for motif consolidation (default: 0.75)'
-    )
+    print(f"Found {len(motif_clusters)} consolidated motifs")
+    print()
     
-    parser.add_argument(
-        '--lines', '-l',
-        help='Comma-separated list of specific lines to process (e.g., IM502,IM664)'
-    )
+    # Analyze each cluster
+    suspicious_clusters = []
     
-    parser.add_argument(
-        '--merge-overlaps', '-m',
-        action='store_true',
-        default=True,
-        help='Merge overlapping motif hits within the same gene (default: True)'
-    )
+    for motif_id, sites in motif_clusters.items():
+        analysis = analyze_motif_cluster(motif_id, sites)
+        
+        # Flag potentially problematic clusters
+        is_suspicious = False
+        issues = []
+        
+        # High sequence diversity might indicate unrelated sequences
+        if analysis['sequence_diversity'] > 0.8 and analysis['total_sites'] > 20:
+            is_suspicious = True
+            issues.append(f"High sequence diversity ({analysis['sequence_diversity']:.2f})")
+        
+        # Multiple very different STREME patterns merged
+        if analysis['streme_patterns_merged'] > 3:
+            is_suspicious = True
+            issues.append(f"Many STREME patterns merged ({analysis['streme_patterns_merged']})")
+        
+        # Very high composition variance
+        if analysis['composition_variance'] > 0.3:
+            is_suspicious = True
+            issues.append(f"High composition variance ({analysis['composition_variance']:.3f})")
+        
+        # Large length range might indicate different motif types
+        length_diff = analysis['length_range'][1] - analysis['length_range'][0]
+        if length_diff > 5:
+            is_suspicious = True
+            issues.append(f"Large length range ({analysis['length_range']})")
+        
+        if is_suspicious:
+            suspicious_clusters.append((motif_id, analysis, issues))
     
-    parser.add_argument(
-        '--no-merge-overlaps',
-        action='store_false',
-        dest='merge_overlaps',
-        help='Disable merging of overlapping motif hits'
-    )
+    # Report results
+    print(f"=== VALIDATION RESULTS ===")
+    print(f"Total motifs analyzed: {len(motif_clusters)}")
+    print(f"Potentially problematic clusters: {len(suspicious_clusters)}")
+    print()
     
-    parser.add_argument(
-        '--overlap-threshold',
-        type=float,
-        default=0.5,
-        help='Minimum overlap fraction to merge motifs (default: 0.5)'
-    )
+    if suspicious_clusters:
+        print("=== SUSPICIOUS CLUSTERS (May need review) ===")
+        
+        # Sort by total sites (most common first)
+        suspicious_clusters.sort(key=lambda x: x[1]['total_sites'], reverse=True)
+        
+        for motif_id, analysis, issues in suspicious_clusters[:10]:  # Show top 10
+            print(f"\n🚨 {motif_id} ({analysis['total_sites']} sites)")
+            print(f"   True consensus: {analysis['consensus']}")
+            print(f"   STREME patterns merged: {analysis['streme_patterns']}")
+            print(f"   Issues: {', '.join(issues)}")
+            print(f"   Sample sequences:")
+            for i, seq in enumerate(analysis['sample_sequences'], 1):
+                print(f"     {i}. {seq}")
+            
+            # Recommendation
+            if analysis['composition_variance'] > 0.4:
+                print("   💡 Recommendation: Very high variance - likely unrelated sequences")
+            elif analysis['streme_patterns_merged'] > 5:
+                print("   💡 Recommendation: Too many patterns merged - consider stricter threshold")
+            else:
+                print("   💡 Recommendation: Review manually - may be legitimate variation")
     
-    parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Enable verbose output'
-    )
+    else:
+        print("✅ No obviously suspicious clusters found!")
+        print("   The consolidation appears to be working appropriately.")
     
-    args = parser.parse_args()
+    # Summary statistics
+    print(f"\n=== SUMMARY STATISTICS ===")
     
+    # Overall cluster size distribution
+    cluster_sizes = [len(sites) for sites in motif_clusters.values()]
+    single_site_clusters = sum(1 for size in cluster_sizes if size == 1)
+    small_clusters = sum(1 for size in cluster_sizes if 2 <= size <= 10)
+    medium_clusters = sum(1 for size in cluster_sizes if 11 <= size <= 100)
+    large_clusters = sum(1 for size in cluster_sizes if size > 100)
+    
+    print(f"Single-site motifs: {single_site_clusters}")
+    print(f"Small clusters (2-10 sites): {small_clusters}")
+    print(f"Medium clusters (11-100 sites): {medium_clusters}")
+    print(f"Large clusters (>100 sites): {large_clusters}")
+    
+    # Merged STREME patterns statistics
+    streme_merges = [analysis['streme_patterns_merged'] for _, sites in motif_clusters.items() 
+                     for analysis in [analyze_motif_cluster(_, sites)]]
+    avg_merges = sum(streme_merges) / len(streme_merges) if streme_merges else 0
+    max_merges = max(streme_merges) if streme_merges else 0
+    
+    print(f"Average STREME patterns per cluster: {avg_merges:.1f}")
+    print(f"Maximum STREME patterns merged: {max_merges}")
+    
+    if len(suspicious_clusters) / len(motif_clusters) < 0.05:
+        print(f"\n✅ OVERALL ASSESSMENT: Good consolidation quality")
+        print(f"   Less than 5% of clusters flagged as suspicious")
+        return True
+    elif len(suspicious_clusters) / len(motif_clusters) < 0.15:
+        print(f"\n⚠️  OVERALL ASSESSMENT: Moderate consolidation quality")
+        print(f"   Some clusters may need review")
+        return True
+    else:
+        print(f"\n🚨 OVERALL ASSESSMENT: Many suspicious clusters")
+        print(f"   Consider adjusting consolidation parameters")
+        return False
+
+def run_consolidation(args):
+    """
+    Run the motif consolidation process
+    """
     # Validate input directory
     results_dir = Path(args.streme_results_dir)
     if not results_dir.exists():
@@ -673,8 +851,147 @@ Input Directory Structure:
     print(f"\n=== COMPLETED ===")
     print(f"Comprehensive results: {output_file}")
     print(f"Summary statistics: {summary_file}")
-    print(f"Total consolidated motifs: {df['consolidated_motif_id'].nunique()}")
+    if HAS_PANDAS and hasattr(df, 'nunique'):
+        print(f"Total consolidated motifs: {df['consolidated_motif_id'].nunique()}")
+    else:
+        print(f"Total consolidated motifs: {df.nunique('consolidated_motif_id')}")
     print(f"Total sites: {len(df)}")
+    
+    return output_file
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='STREME Sites Consolidator - Consolidate and validate motif data',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Create subparsers for different commands
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Consolidate command
+    consolidate_parser = subparsers.add_parser(
+        'consolidate',
+        help='Consolidate STREME sites.tsv files across multiple lines',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic consolidation
+  %(prog)s consolidate /path/to/streme/results/ --output consolidated_sites
+  
+  # With custom similarity threshold
+  %(prog)s consolidate /path/to/streme/results/ --threshold 0.8 --output results/
+  
+  # Process specific lines only
+  %(prog)s consolidate /path/to/streme/results/ --lines IM502,IM664 --output targeted/
+
+Input Directory Structure:
+  streme_results/
+  ├── streme_IM502/sites.tsv
+  ├── streme_IM664/sites.tsv
+  └── streme_IM767/sites.tsv
+        """
+    )
+    
+    consolidate_parser.add_argument(
+        'streme_results_dir',
+        help='Directory containing STREME output folders with sites.tsv files'
+    )
+    
+    consolidate_parser.add_argument(
+        '--output', '-o',
+        default='consolidated_streme_sites',
+        help='Output file prefix (default: consolidated_streme_sites)'
+    )
+    
+    consolidate_parser.add_argument(
+        '--threshold', '-t',
+        type=float,
+        default=0.75,
+        help='Similarity threshold for motif consolidation (default: 0.75)'
+    )
+    
+    consolidate_parser.add_argument(
+        '--lines', '-l',
+        help='Comma-separated list of specific lines to process (e.g., IM502,IM664)'
+    )
+    
+    consolidate_parser.add_argument(
+        '--merge-overlaps', '-m',
+        action='store_true',
+        default=True,
+        help='Merge overlapping motif hits within the same gene (default: True)'
+    )
+    
+    consolidate_parser.add_argument(
+        '--no-merge-overlaps',
+        action='store_false',
+        dest='merge_overlaps',
+        help='Disable merging of overlapping motif hits'
+    )
+    
+    consolidate_parser.add_argument(
+        '--overlap-threshold',
+        type=float,
+        default=0.5,
+        help='Minimum overlap fraction to merge motifs (default: 0.5)'
+    )
+    
+    consolidate_parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Enable verbose output'
+    )
+    
+    # Validate command
+    validate_parser = subparsers.add_parser(
+        'validate',
+        help='Validate consolidated motif results for quality',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Validate consolidation results
+  %(prog)s validate consolidated_streme_sites.tsv
+  
+  # Validate and show detailed analysis
+  %(prog)s validate results/consolidated_streme_sites.tsv --verbose
+        """
+    )
+    
+    validate_parser.add_argument(
+        'tsv_file',
+        help='Consolidated TSV file to validate (output from consolidate command)'
+    )
+    
+    validate_parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Show detailed analysis for all clusters'
+    )
+    
+    args = parser.parse_args()
+    
+    # Handle different commands
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+    
+    if args.command == 'consolidate':
+        output_file = run_consolidation(args)
+        
+        # Ask if user wants to validate
+        print(f"\n=== VALIDATION OPTION ===")
+        response = input(f"Would you like to validate the results in {output_file}? (y/n): ").strip().lower()
+        if response in ['y', 'yes']:
+            print()
+            run_validation(output_file)
+    
+    elif args.command == 'validate':
+        if not Path(args.tsv_file).exists():
+            print(f"Error: File {args.tsv_file} does not exist")
+            sys.exit(1)
+        
+        success = run_validation(args.tsv_file)
+        sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
     main()
