@@ -10,15 +10,17 @@ This pipeline consolidates STREME motif outputs across multiple genetic lines, v
 
 ```
 STREME_parser/
+├── bin/                    # Main executables
+│   ├── streme-parser       # Main CLI tool (shell wrapper)
+│   └── main.py            # Python entry point
 ├── cli_tools/              # Core CLI utilities
 │   ├── motif_consolidator.py         # Consolidate motifs across lines
 │   ├── streme_sites_consolidator.py  # Parse STREME sites.tsv files
+│   ├── validate_consolidation.py     # Validate motif clustering quality
 │   └── motif_to_regression_features.py # Extract ML features
 ├── pipelines/              # Main pipeline orchestrator
-│   └── meme_pipeline.py    # Master CLI tool
-├── validate_consolidation.py  # Validate motif clustering quality
-├── main.py                 # Simple entry point
-├── meme                    # Shell wrapper
+│   └── streme_pipeline.py  # Master CLI tool
+├── scripts/                # Utility scripts for cluster computing
 ├── outputs/                # Generated results
 ├── archive/                # Old/deprecated scripts
 └── README.md              # This file

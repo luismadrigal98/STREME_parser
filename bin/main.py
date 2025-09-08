@@ -8,6 +8,7 @@ It provides a unified interface to all pipeline components.
 Usage:
     python main.py --help
     python main.py consolidate /path/to/streme/results
+    python main.py validate /path/to/consolidated_sites.tsv
     python main.py extract-features /path/to/consolidated_sites.tsv
 """
 
@@ -17,7 +18,7 @@ import subprocess
 from pathlib import Path
 
 # Add the project directories to Python path
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "cli_tools"))
 sys.path.insert(0, str(project_root / "pipelines"))
 

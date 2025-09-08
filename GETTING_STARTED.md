@@ -8,13 +8,13 @@ The pipeline provides a unified CLI tool that can run different analysis subprog
 
 ```bash
 # Basic usage - consolidate motifs
-./meme consolidate /path/to/streme/results/ --output my_analysis
+./bin/streme-parser consolidate /path/to/streme/results/ --output my_analysis
 
 # Extract features for machine learning
-./meme extract-features my_analysis/consolidated_streme_sites.tsv --simple
+./bin/streme-parser extract-features my_analysis/consolidated_streme_sites.tsv --simple
 
 # Or using Python directly
-python3 meme_pipeline.py consolidate /path/to/streme/results/ --output my_analysis
+python3 pipelines/streme_pipeline.py consolidate /path/to/streme/results/ --output my_analysis
 ```
 
 ## Installation
@@ -26,7 +26,7 @@ pip install pandas numpy
 ```
 
 2. **Clone/Download** this repository
-3. **Make executable**: `chmod +x meme meme_pipeline.py`
+3. **Make executable**: `chmod +x bin/streme-parser`
 
 ## Available Commands
 
@@ -44,13 +44,15 @@ Processes STREME `sites.tsv` files from multiple genetic lines, consolidates sim
 #### Usage Examples:
 
 ```bash
+```bash
 # Basic consolidation with overlap merging (recommended)
-./meme consolidate /path/to/streme/results/ --output comprehensive_analysis
+./bin/streme-parser consolidate /path/to/streme/results/ --output comprehensive_analysis
 
 # Custom similarity threshold for stricter motif grouping
-./meme consolidate /path/to/streme/results/ \
-  --threshold 0.8 \
+./bin/streme-parser consolidate /path/to/streme/results/ 
+  --threshold 0.8 
   --output strict_analysis
+```
 
 # Process specific genetic lines only
 ./meme consolidate /path/to/streme/results/ \
@@ -101,15 +103,15 @@ Converts consolidated motif data into machine learning ready features for gene e
 
 ```bash
 # Simple binary features (presence/absence only)
-./meme extract-features consolidated_streme_sites.tsv --simple
+./bin/streme-parser extract-features consolidated_streme_sites.tsv --simple
 
 # Detailed features with expression data
-./meme extract-features consolidated_streme_sites.tsv \
+./bin/streme-parser extract-features consolidated_streme_sites.tsv \
   --expression expression_data.tsv \
   --top-motifs 100
 
 # Filter motifs by minimum occurrence
-./meme extract-features consolidated_streme_sites.tsv \
+./bin/streme-parser extract-features consolidated_streme_sites.tsv \
   --min-sites 50 \
   --output-prefix filtered_features
 ```
