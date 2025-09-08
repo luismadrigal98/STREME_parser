@@ -28,124 +28,79 @@ STREME_parser/
 
 ## 🚀 Quick Start
 
-### 1. Consolidate Motifs Across Lines
+### 1. Make the tool executable
+```bash
+chmod +x bin/streme-parser
+```
+
+### 2. Consolidate Motifs Across Lines
 
 ```bash
 # Basic consolidation
-python meme_pipeline.py consolidate /path/to/streme/results
+./bin/streme-parser consolidate /path/to/streme/results --output my_analysis
 
 # With custom parameters
-python meme_pipeline.py consolidate /path/to/streme/results \
-    --output my_outputs/ \
+./bin/streme-parser consolidate /path/to/streme/results \
+    --output my_analysis/ \
     --threshold 0.8 \
     --verbose
 ```
 
-**Output:**
-- `consolidated_motif_catalog.txt` - Unique motifs with occurrence info
-- `regulatory_maps_by_line.txt` - Line-level motif summaries  
-- `regulatory_strings_for_ML.fasta` - ML-ready regulatory strings
-
-### 2. Map Motifs to Individual Genes
+### 3. Validate Consolidation Quality
 
 ```bash
-# Map motifs to genes for specific line
-python meme_pipeline.py map-genes \
-    outputs/consolidated_motif_catalog.txt \
-    sequences/Genes_IM502_DNA_lifted.fasta \
-    IM502 \
-    --detailed
+# Check clustering quality and overlap handling
+./bin/streme-parser validate my_analysis/consolidated_streme_sites.tsv
 ```
 
-**Output:**
-- `IM502_gene_motif_matrix.txt` - Gene × motif score matrix
-- `IM502_detailed_motif_report.txt` - All motif positions per gene
-
-### 3. Full Pipeline (Recommended)
+### 4. Extract Machine Learning Features
 
 ```bash
-# Complete analysis for multiple lines
-python meme_pipeline.py full \
-    /path/to/streme/results \
-    /path/to/sequences/ \
-    --lines IM502,IM664,IM767,IM1034 \
-    --output final_results/
+# Simple binary features (presence/absence only)
+./bin/streme-parser extract-features my_analysis/consolidated_streme_sites.tsv --simple
+
+# Detailed features with expression data
+./bin/streme-parser extract-features my_analysis/consolidated_streme_sites.tsv \
+    --expression expression_data.tsv --top-motifs 100
 ```
 
-## 📊 Key Improvements Over Previous Versions
+## 📊 Available Commands
 
-### ✅ Proper Motif Clustering
-- **Before:** `AAAAAAAATTA` and `CTYTCTCTCTCTH` incorrectly clustered together
-- **After:** Biologically meaningful clustering with IUPAC-aware similarity
+### `consolidate` - Consolidate STREME Motifs
+Groups similar motifs across genetic lines using IUPAC-aware similarity scoring.
 
-### ✅ Gene-Level Resolution  
-- **Before:** Line-level regulatory maps (too coarse)
-- **After:** Individual gene motif scores and positions
+### `validate` - Validate Consolidation Quality  
+Checks the quality of motif clustering and identifies potential issues.
 
-### ✅ Expression-Ready Outputs
-- Gene × motif matrices ready for correlation with expression data
-- Position-weighted scoring (TSS proximity matters)
-- Strand-aware motif detection
+### `extract-features` - Extract ML Features
+Converts consolidated motif data into machine learning-ready feature matrices.
+- **Simple mode** (`--simple`): Binary presence/absence features only
+- **Detailed mode**: Comprehensive features including positional, sequence variation, and density metrics
 
-## 🔬 Biological Workflow
+### `full` - Complete Pipeline
+Runs consolidation and feature extraction in one command.
 
-```
-STREME Results → Motif Consolidation → Gene Mapping → Expression Analysis
-     ↓                    ↓                ↓              ↓
-Multiple lines    Unique regulatory   Gene-specific   Link regulatory
-each with 50-200     elements         motif scores    elements to
-motifs per line    across all lines   and positions   gene expression
-```
+## 🛠 Technical Features
 
-## 📈 Expected Results
+- **IUPAC-aware motif similarity** with position-by-position comparison
+- **Overlap merging** to handle redundant motif hits
+- **Strand-aware detection** for both forward and reverse complements
+- **Position-weighted scoring** (proximity to TSS/gene start matters)
+- **Configurable similarity thresholds** for fine-tuning clustering
 
-- **~1,100 unique motifs** across 10 lines (realistic diversity)
-- **~355 common motifs** (shared regulatory elements)  
-- **~746 line-specific motifs** (lineage-specific regulation)
+## � Expected Results
 
-## 🛠 Technical Details
-
-### Motif Similarity Algorithm
-- IUPAC code expansion and position-by-position comparison
-- Length difference penalties (motifs >3bp different won't cluster)
-- Sliding window alignment for optimal matching
-- Default threshold: 0.75 (adjustable)
-
-### Gene Mapping Features
-- Regex-based motif searching with IUPAC support
-- Reverse complement detection
-- Position-weighted scoring (closer to 5' = higher score)
-- Multiple match reporting per gene
-
-### Output Formats
-- **TSV matrices** - Compatible with R, Python, Excel
-- **FASTA strings** - Ready for ML pipelines
-- **Detailed reports** - All motif positions for manual inspection
-
-## 🔗 Integration with Expression Data
-
-The gene-motif matrices are designed to correlate with expression data:
-
-```python
-# Example analysis workflow
-import pandas as pd
-
-# Load results
-motif_scores = pd.read_csv('IM502_gene_motif_matrix.txt', sep='\t', index_col=0)
-expression = pd.read_csv('IM502_expression_data.txt', sep='\t', index_col=0)
-
-# Correlate motif presence with expression
-correlations = motif_scores.corrwith(expression, axis=0)
-significant_motifs = correlations[abs(correlations) > 0.3]
-```
+- **Consolidated motif catalog** with unique regulatory elements across all lines
+- **Quality validation reports** showing clustering effectiveness
+- **ML-ready feature matrices** for gene expression prediction
+- **Compatible outputs** for R, Python, and Excel analysis
 
 ## 🎯 Next Steps
 
-1. **Run the pipeline** on your complete dataset
-2. **Correlate** gene-motif matrices with expression data
-3. **Identify** regulatory motifs associated with specific expression patterns
-4. **Validate** findings with known regulatory elements
-5. **Build ML models** using regulatory strings
+1. **Run consolidation** on your STREME results
+2. **Validate** the clustering quality
+3. **Extract features** appropriate for your analysis
+4. **Correlate** with gene expression data for regulatory insights
 
 ## 📞 Usage Examples
 
