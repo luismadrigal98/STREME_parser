@@ -113,7 +113,7 @@ Examples:
         
     elif args.command == 'validate':
         cmd = [
-            'python3', str(project_root / 'validate_consolidation.py'),
+            'python3', str(project_root / 'cli_tools' / 'validate_consolidation.py'),
             args.consolidated_file
         ]
         
@@ -135,7 +135,7 @@ Examples:
         consolidated_file = os.path.join(args.output, 'consolidated_streme_sites.tsv')
         if os.path.exists(consolidated_file):
             cmd2 = [
-                'python3', str(project_root / 'validate_consolidation.py'),
+                'python3', str(project_root / 'cli_tools' / 'validate_consolidation.py'),
                 consolidated_file
             ]
             run_command(cmd2, "Step 2: Validating consolidation quality")
