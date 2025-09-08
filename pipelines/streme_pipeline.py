@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-MEME Analysis Pipeline - Master CLI tool for motif discovery and analysis.
+STREME Analysis Pipeline - Master CLI tool for motif discovery and analysis.
 
-This tool orchestrates the complete pipeline from STREME output consolidation
-to gene-level motif mapping for expression analysis.
+Th    elif args.command == 'validate':
+        cmd = [
+            'python', str(project_root / 'cli_tools' / 'validate_consolidation.py'),
+            args.consolidated_file
+        ]
+        
+        success = run_command(cmd, "Validating motif consolidation quality") orchestrates the complete pipeline from STREME output consolidation
+to feature extraction for machine learning analysis.
 """
 
 import os
@@ -28,7 +34,7 @@ def run_command(cmd, description):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='MEME Analysis Pipeline - Complete motif discovery and mapping',
+        description='STREME Analysis Pipeline - Complete motif discovery and feature extraction',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Pipeline Steps:
@@ -51,7 +57,7 @@ Examples:
   %(prog)s extract-features outputs/consolidated_streme_sites.tsv --simple
   
   # Full pipeline
-  %(prog)s full /path/to/streme/results --output outputs/
+  %(prog)s full /path/to/streme/results /path/to/sequences/ --lines IM502,IM664,IM767
         """
     )
     

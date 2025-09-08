@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-MEME Analysis Pipeline - Main Entry Point
+STREME Analysis Pipeline - Main Entry Point
 
-This is the primary script for running the complete MEME motif analysis pipeline.
+This is the primary script for running the complete STREME motif analysis pipeline.
 It provides a unified interface to all pipeline components.
 
 Usage:
     python main.py --help
     python main.py consolidate /path/to/streme/results
-    python main.py map-genes /path/to/catalog.txt /path/to/sequences/
+    python main.py extract-features /path/to/consolidated_sites.tsv
 """
 
 import os
@@ -22,8 +22,8 @@ sys.path.insert(0, str(project_root / "cli_tools"))
 sys.path.insert(0, str(project_root / "pipelines"))
 
 def main():
-    """Main entry point - delegate to meme_pipeline.py"""
-    pipeline_script = project_root / "pipelines" / "meme_pipeline.py"
+    """Main entry point - delegate to streme_pipeline.py"""
+    pipeline_script = project_root / "pipelines" / "streme_pipeline.py"
     
     if not pipeline_script.exists():
         print(f"Error: Pipeline script not found at {pipeline_script}")
