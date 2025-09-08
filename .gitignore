@@ -1,8 +1,25 @@
-test_improved_similarity.py
-test_overlap_merging.py
-test_poly_a_similarity.py
-__pycache__/test_poly_a_similarity.cpython-312.pyc
-cli_tools/__pycache__/streme_sites_consolidator.cpython-312.pyc
-OUTPUT_COLUMNS_GUIDE.md
-OUTPUT_COLUMNS_GUIDE.md
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Output files
+outputs/
 consolidated_streme_sites.tsv
+*.tsv
+*.txt
+
+# Temporary and test files
+test_*.py
+temp_*
+*.tmp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
