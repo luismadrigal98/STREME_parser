@@ -1,19 +1,24 @@
-# MEME Analysis Pipeline
+# STREME Analysis Pipeline
 
-A comprehensive toolkit for motif discovery and gene-level regulatory mapping in *Mimulus guttatus*.
+A comprehensive toolkit for analyzing STREME motif discovery results across multiple genetic lines of *Mimulus guttatus*.
 
 ## 🎯 Purpose
 
-This pipeline consolidates STREME motif outputs across multiple genetic lines and creates gene-level regulatory maps suitable for expression analysis and machine learning.
+This pipeline consolidates STREME motif outputs across multiple genetic lines, validates motif clustering, and extracts machine learning-ready features for gene expression analysis.
 
 ## 📁 Directory Structure
 
 ```
-MEME_related/
+STREME_parser/
 ├── cli_tools/              # Core CLI utilities
-│   ├── motif_consolidator.py    # Consolidate motifs across lines
-│   └── gene_motif_mapper.py     # Map motifs to individual genes
-├── meme_pipeline.py        # Master CLI orchestrator
+│   ├── motif_consolidator.py         # Consolidate motifs across lines
+│   ├── streme_sites_consolidator.py  # Parse STREME sites.tsv files
+│   └── motif_to_regression_features.py # Extract ML features
+├── pipelines/              # Main pipeline orchestrator
+│   └── meme_pipeline.py    # Master CLI tool
+├── validate_consolidation.py  # Validate motif clustering quality
+├── main.py                 # Simple entry point
+├── meme                    # Shell wrapper
 ├── outputs/                # Generated results
 ├── archive/                # Old/deprecated scripts
 └── README.md              # This file
