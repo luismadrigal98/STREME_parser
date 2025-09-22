@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
 """
-STREME Analysis Pipeline - Master CLI tool for motif discovery and analysis.
+STREME Analysis Pipeline - MaPipeline Steps:
+  1. consolidate      - Consolidate STREME motifs across lines
+  2. validate         - Validate motif consolidation quality
+  3. extract-features - Extract regression features from consolidated motifs
+  4. analyze-expression - Analyze motif effects on gene expression
+  5. full             - Run complete pipeline (steps 1-3)CLI tool for motif di    # Feature extraction subcommand
+    features_parser = subparsers.add_parser('extract-features', help='Extract features from consolidated motif data')
+    features_parser.add_argument('motif_file', help='Consolidated motif TSV file')
+    features_parser.add_argument('--expression', '-e', help='Expression data file (TSV with line, gene, expression columns)')
+    features_parser.add_argument('--top-motifs', '-t', type=int, help='Include only top N most frequent motifs')
+    features_parser.add_argument('--min-sites', '-m', type=int, default=10, help='Minimum sites required for motif inclusion')
+    features_parser.add_argument('--output-prefix', '-o', default='motif_regression', help='Output file prefix')
+    features_parser.add_argument('--simple', '-s', action='store_true', help='Generate only presence/absence features (binary)')
+    
+    # Motif-expression analysis subcommand
+    analyze_parser = subparsers.add_parser('analyze-expression', help='Analyze motif effects on gene expression')
+    analyze_parser.add_argument('motif_features', help='Motif feature file from extract-features')
+    analyze_parser.add_argument('expression_data', help='Expression data file (Gene, Line, Expression)')
+    analyze_parser.add_argument('--output', '-o', default='motif_analysis_results', help='Output directory for analysis results')
+    analyze_parser.add_argument('--detailed', action='store_true', help='Use detailed motif features (not just presence/absence)')
+    analyze_parser.add_argument('--top-motifs', type=int, help='Only use top N most important motifs')
+    
+    args = parser.parse_args()d analysis.
 
 Th    elif args.command == 'validate':
         cmd = [
@@ -161,6 +183,21 @@ Examples:
             cmd.append('--simple')
         
         success = run_command(cmd, "Extracting regression features from motif data")
+        
+    elif args.command == 'analyze-expression':
+        cmd = [
+            'python', str(project_root / 'cli_tools' / 'motif_expression_analyzer.py'),
+            args.motif_features,
+            args.expression_data,
+            '--output', args.output
+        ]
+        
+        if args.detailed:
+            cmd.append('--detailed')
+        if args.top_motifs:
+            cmd.extend(['--top-motifs', str(args.top_motifs)])
+        
+        success = run_command(cmd, "Analyzing motif effects on gene expression")
         
     else:
         parser.print_help()
