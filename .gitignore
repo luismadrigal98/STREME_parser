@@ -2,24 +2,54 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 
-# Output files
+# Analysis outputs and results
 outputs/
-consolidated_streme_sites.tsv
+*_results/
+*_analysis/
+pipeline_results/
+mixed_effects_results/
+comprehensive_analysis/
+
+# Data files (keep structure but ignore data)
 *.tsv
+*.csv
 *.txt
+*.fa
+*.fasta
+*.fastq
 
 # Temporary and test files
 test_*.py
 temp_*
 *.tmp
+*_backup.py
+*_corrupted.py
+
+# Logs and debugging
+*.log
+debug_*
 
 # IDE and editor files
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Virtual environments
+venv/
+env/
+.env
+
+# Jupyter notebooks (if added later)
+*.ipynb_checkpoints/
+
+# R files (if using R for statistics)
+.Rhistory
+.RData
