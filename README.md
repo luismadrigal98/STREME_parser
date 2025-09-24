@@ -120,20 +120,20 @@ This writes (by default):
 
   Note: current analyzer expects TSV. If you generated a CSV, convert to TSV first:
 
-  ```bash
+```bash
 python - <<'PY'
 import pandas as pd
 df = pd.read_csv('outputs/motif_regression_features.csv')
 df.to_csv('outputs/motif_regression_features.tsv', sep='\t', index=False)
 PY
-   ```
+```
 
-  ```bash
+```bash
 python cli_tools/motif_expression_analyzer.py \
   outputs/motif_regression_features.tsv \
   path/to/expression.tsv \
   --output outputs/motif_analysis_results
-  ```
+```
 
   Outputs include: `analysis_report.md`, `model_performance.png`, `motif_importance_heatmap.png`, `predictions.tsv`.
 
