@@ -42,7 +42,8 @@ pip install -r requirements.txt
 - `cli_tools/`
   - `streme_sites_consolidator.py`: Consolidate/validate/features (primary CLI)
   - `motif_to_regression_features.py`: Convert consolidated sites to features
-  - `motif_expression_analyzer.py`: Model motif→expression relationships
+  - `motif_expression_analyzer.py`: Model motif→expression relationships (ABSOLUTE per-line analysis)
+  - `relative_motif_analyzer.py`: Model motif→expression relationships (RELATIVE vs IM767 baseline)
   - `comprehensive_motif_analyzer.py`: Position + sequence variation + cross-line effects
   - `validate_consolidation.py`: Standalone validator (duplicated within consolidator CLI)
 - `pipelines/`
@@ -68,14 +69,24 @@ Each `sites.tsv` should include (STREME defaults) columns similar to:
 
 - `motif_ID`, `seq_ID`, `site_Start`, `site_End`, `site_Strand`, `site_Score`, `site_Sequence`
 
-Expression file (tab-separated):
+Expression files (tab-separated, two formats supported):
 
+**Long format (Gene | Line | Expression):**
 ```text
-Gene  Line  Expression
-AT1G01010  IM502   0.37
+Gene       Line   Expression
+AT1G01010  IM502  0.37
 AT1G01010  IM664  -0.12
 ...
 ```
+
+**Wide format (gene | LRTadd | IM62 | IM155 | ... | IM767):**
+```text
+gene       LRTadd  IM62   IM155   IM502   IM664   IM767
+AT1G01010  2.45    0.23   0.15    0.37   -0.12    0.00
+...
+```
+
+The wide format is required for relative analysis (IM767 serves as baseline with expression = 0).
 
 
 ## Quickstart (most direct path)
@@ -114,34 +125,35 @@ This writes (by default):
 - `outputs/motif_regression_feature_descriptions.txt`
 - `outputs/motif_regression_summary.txt`
 
-4. Analyze motif effects on expression (two options):
+4. Analyze motif effects on expression (three options):
 
-- Simple regression analysis (multiple models + visuals):
+**Option A: Absolute analysis (per-line analysis)**
 
-  Note: current analyzer expects TSV. If you generated a CSV, convert to TSV first:
-
-```bash
-python - <<'PY'
-import pandas as pd
-df = pd.read_csv('outputs/motif_regression_features.csv')
-df.to_csv('outputs/motif_regression_features.tsv', sep='\t', index=False)
-PY
-```
+Analyzes each line independently. Expression data can be in long format (`Gene | Line | Expression`) or wide format (`gene | LRTadd | IM62 | IM155 | ... | IM767`).
 
 ```bash
 python cli_tools/motif_expression_analyzer.py \
-  outputs/motif_regression_features.tsv \
+  outputs/consolidated_streme_sites.tsv \
   path/to/expression.tsv \
-  --output outputs/motif_analysis_results
+  --output outputs/absolute_analysis_results
 ```
 
-  Outputs include: `analysis_report.md`, `model_performance.png`, `motif_importance_heatmap.png`, `predictions.tsv`.
+**Option B: Relative analysis (comparing to IM767 baseline)**
 
-- Comprehensive analysis from raw consolidated sites (position bias + sequence variation + cross-line):
+Generates features comparing each line to IM767 reference. Requires wide format expression data.
 
-  ```bash
-  python cli_tools/comprehensive_motif_analyzer.py \
-    outputs/consolidated_streme_sites.tsv \
+```bash
+python cli_tools/relative_motif_analyzer.py \
+  outputs/consolidated_streme_sites.tsv \
+  path/to/expression_wide.tsv \
+  --output outputs/relative_analysis_results
+```
+
+**Option C: Comprehensive analysis (position bias + sequence variation + cross-line)**
+
+```bash
+python cli_tools/comprehensive_motif_analyzer.py \
+  outputs/consolidated_streme_sites.tsv \
     path/to/expression.tsv \
     --output outputs/comprehensive_analysis \
     --layers presence position variation cross_line \

@@ -1,14 +1,37 @@
 #!/usr/bin/env python3
 """
-Motif-Expression Regression Analyzer
+Absolute Motif-Expression Analysis Tool
 
-This tool combines STREME motif features with gene expression data to identify
-regulatory motifs that explain expression differences across genetic lines.
+This tool performs integrative analysis of motif occurrences and gene expression data
+to identify regulatory relationships and patterns. This provides ABSOLUTE analysis
+(per-line analysis). For RELATIVE analysis (comparing to IM767 baseline), 
+use relative_motif_analyzer.py instead.
 
-Key Analysis:
-- Uses motif presence/absence to predict relative gene expression
-- Identifies which motifs contribute to expression differences
-- Generates interpretable results for biological insights
+Features:
+- Load consolidated motif data from STREME analysis
+- Integrate with gene expression data (long or wide format)
+- Generate comprehensive regulatory feature matrices
+- Perform correlation analysis between motifs and expression
+- Model gene expression using motif features
+- Generate publication-ready visualizations and reports
+
+Usage:
+    python motif_expression_analyzer.py <consolidated_motifs.tsv> <expression_data.tsv> [options]
+
+Input formats:
+    - Motif data: Output from streme_sites_consolidator.py
+    - Expression data: 
+      * Long format: Gene | Line | Expression (tab-separated)
+      * Wide format: gene | LRTadd | IM62 | IM155 | ... | IM767 (tab-separated)
+
+Output:
+    - Regulatory feature matrix
+    - Expression correlation analysis
+    - Regression models and coefficients
+    - Comprehensive visualizations
+    - Summary statistics and reports
+
+Author: Computational Biology Pipeline
 """
 
 import os
@@ -41,27 +64,56 @@ def load_motif_features(motif_file):
 
 def load_expression_data(expression_file):
     """
-    Load expression data. Expected format:
-    Gene | Line | Expression (relative to IM767)
+    Load expression data. Supports two formats:
+    1. Long format: Gene | Line | Expression
+    2. Wide format: gene | LRTadd | IM62 | IM155 | ... | IM767
     """
     print(f"Loading expression data from: {expression_file}")
     
     expr_df = pd.read_csv(expression_file, sep='\t')
     
-    # Ensure proper column names
-    expected_cols = ['Gene', 'Line', 'Expression']
-    if list(expr_df.columns) != expected_cols:
-        print(f"Warning: Expected columns {expected_cols}, got {list(expr_df.columns)}")
-        print("Assuming first 3 columns are Gene, Line, Expression")
-        expr_df.columns = expected_cols[:len(expr_df.columns)]
+    # Detect format based on columns
+    if len(expr_df.columns) > 3 and any(col.startswith('IM') for col in expr_df.columns):
+        # Wide format - convert to long format
+        print("Detected wide format - converting to long format")
+        
+        gene_col = expr_df.columns[0]
+        line_cols = [col for col in expr_df.columns if col not in [gene_col, 'LRTadd'] and col.startswith('IM')]
+        
+        # Melt to long format
+        long_df = expr_df.melt(
+            id_vars=[gene_col], 
+            value_vars=line_cols,
+            var_name='Line', 
+            value_name='Expression'
+        )
+        long_df = long_df.rename(columns={gene_col: 'Gene'})
+        
+        # Remove IM767 baseline (expression = 0)
+        long_df = long_df[long_df['Line'] != 'IM767'].copy()
+        
+        print(f"Converted wide format to long format")
+        print(f"Found expression data for {long_df['Gene'].nunique()} genes across {long_df['Line'].nunique()} lines")
+        print(f"Lines found: {sorted(long_df['Line'].unique())}")
+        
+        return long_df
     
-    # Remove IM767 entries (they should be 0 anyway)
-    expr_df = expr_df[expr_df['Line'] != 'IM767'].copy()
-    
-    print(f"Found expression data for {expr_df['Gene'].nunique()} genes across {expr_df['Line'].nunique()} lines")
-    print(f"Lines found: {sorted(expr_df['Line'].unique())}")
-    
-    return expr_df
+    else:
+        # Long format (original)
+        # Ensure proper column names
+        expected_cols = ['Gene', 'Line', 'Expression']
+        if list(expr_df.columns) != expected_cols:
+            print(f"Warning: Expected columns {expected_cols}, got {list(expr_df.columns)}")
+            print("Assuming first 3 columns are Gene, Line, Expression")
+            expr_df.columns = expected_cols[:len(expr_df.columns)]
+        
+        # Remove IM767 entries (they should be 0 anyway)
+        expr_df = expr_df[expr_df['Line'] != 'IM767'].copy()
+        
+        print(f"Found expression data for {expr_df['Gene'].nunique()} genes across {expr_df['Line'].nunique()} lines")
+        print(f"Lines found: {sorted(expr_df['Line'].unique())}")
+        
+        return expr_df
 
 def merge_motif_expression_data(motif_df, expr_df):
     """Merge motif features with expression data"""
@@ -282,27 +334,31 @@ def generate_report(results, importance_df, merged_df, output_file):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Analyze motif effects on gene expression across genetic lines',
+        description='Analyze motif effects on gene expression across genetic lines (ABSOLUTE analysis)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic analysis with binary motif features
-  %(prog)s motif_features.tsv expression_data.tsv --output results/
+  %(prog)s consolidated_motifs.tsv expression_data.tsv --output results/
   
   # Include detailed motif features (counts, positions, etc.)
-  %(prog)s motif_features.tsv expression_data.tsv --detailed --output results/
+  %(prog)s consolidated_motifs.tsv expression_data.tsv --detailed --output results/
   
   # Focus on top motifs only
-  %(prog)s motif_features.tsv expression_data.tsv --top-motifs 50 --output results/
+  %(prog)s consolidated_motifs.tsv expression_data.tsv --top-motifs 50 --output results/
 
 Expected file formats:
-  motif_features.tsv: Output from 'streme-parser extract-features'
-  expression_data.tsv: Gene Line Expression (tab-separated)
+  consolidated_motifs.tsv: Output from streme_sites_consolidator.py
+  expression_data.tsv: 
+    Long format: Gene Line Expression (tab-separated)
+    Wide format: gene LRTadd IM62 IM155 ... IM767 (tab-separated)
+
+Note: For RELATIVE analysis (comparing to IM767 baseline), use relative_motif_analyzer.py
         """
     )
     
-    parser.add_argument('motif_features', help='Motif feature file from extract-features')
-    parser.add_argument('expression_data', help='Expression data file (Gene, Line, Expression)')
+    parser.add_argument('motif_features', help='Consolidated motif file from streme_sites_consolidator.py')
+    parser.add_argument('expression_data', help='Expression data file (long or wide format)')
     parser.add_argument('--output', '-o', default='motif_analysis_results', 
                        help='Output directory for results')
     parser.add_argument('--detailed', action='store_true',
@@ -316,7 +372,7 @@ Expected file formats:
     os.makedirs(args.output, exist_ok=True)
     
     print("=" * 60)
-    print("MOTIF-EXPRESSION REGRESSION ANALYSIS")
+    print("ABSOLUTE MOTIF-EXPRESSION ANALYSIS")
     print("=" * 60)
     
     try:
