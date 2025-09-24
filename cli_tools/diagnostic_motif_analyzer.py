@@ -35,9 +35,9 @@ def load_and_examine_data(motif_file, expr_file):
     motif_df = pd.read_csv(motif_file, sep='\t')
     print(f"Motif data shape: {motif_df.shape}")
     print(f"Columns: {list(motif_df.columns)}")
-    print(f"Unique genes: {motif_df['gene'].nunique()}")
+    print(f"Unique genes: {motif_df['gene_id'].nunique()}")
     print(f"Unique lines: {motif_df['line'].nunique()}")
-    print(f"Unique motifs: {motif_df['motif'].nunique()}")
+    print(f"Unique motifs: {motif_df['consolidated_motif_id'].nunique()}")
     
     # Load expression data
     print(f"\nLoading expression data from: {expr_file}")
@@ -68,13 +68,13 @@ def analyze_motif_patterns(motif_df):
     print("="*70)
     
     # Motif frequency per gene
-    motif_per_gene = motif_df.groupby('gene')['motif'].nunique()
+    motif_per_gene = motif_df.groupby('gene_id')['consolidated_motif_id'].nunique()
     print(f"Motifs per gene - Mean: {motif_per_gene.mean():.1f}, "
           f"Median: {motif_per_gene.median():.1f}, "
           f"Range: {motif_per_gene.min()}-{motif_per_gene.max()}")
     
     # Motif frequency across lines
-    motif_line_freq = motif_df.groupby(['motif', 'line']).size().unstack(fill_value=0)
+    motif_line_freq = motif_df.groupby(['consolidated_motif_id', 'line']).size().unstack(fill_value=0)
     motif_variance = motif_line_freq.var(axis=1)
     
     print(f"\nMotif line frequency variance:")
@@ -97,9 +97,9 @@ def create_feature_matrix(motif_df, expr_df, line_cols, reference_line='IM767'):
     # Build motif features per gene-line
     motif_features = {}
     for _, row in motif_df.iterrows():
-        gene = row['gene']
+        gene = row['gene_id']
         line = row['line']
-        motif = row['motif']
+        motif = row['consolidated_motif_id']
         
         if gene not in motif_features:
             motif_features[gene] = {}
@@ -112,8 +112,8 @@ def create_feature_matrix(motif_df, expr_df, line_cols, reference_line='IM767'):
         
         motif_features[gene][line][motif]['present'] = 1
         motif_features[gene][line][motif]['count'] += 1
-        if 'start' in row:
-            motif_features[gene][line][motif]['positions'].append(row['start'])
+        if 'start_pos' in row:
+            motif_features[gene][line][motif]['positions'].append(row['start_pos'])
     
     print(f"Built motif features for {len(motif_features)} genes")
     
