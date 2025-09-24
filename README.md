@@ -46,7 +46,7 @@ pip install -r requirements.txt
   - `comprehensive_motif_analyzer.py`: Position + sequence variation + cross-line effects
   - `validate_consolidation.py`: Standalone validator (duplicated within consolidator CLI)
 - `pipelines/`
-  - `streme_pipeline.py`: Pipeline entry (consolidate, validate, extract-features, analyze-expression, full)
+  - `streme_pipeline.py`: Pipeline entry (consolidate, validate, full)
 - `scripts/`
   - `remote_streme_all_lines.sh`: SLURM array job to run RepeatMasker + STREME per FASTA
   - `consolidate_streme_results.sh`: Example shell consolidation helper
@@ -165,21 +165,16 @@ bin/streme-parser --help
 # Examples
 bin/streme-parser consolidate /path/to/streme_results --output outputs/
 bin/streme-parser validate outputs/consolidated_streme_sites.tsv
-bin/streme-parser extract-features outputs/consolidated_streme_sites.tsv \
-  --expression path/to/expression.tsv --top-motifs 100 --min-sites 10
 
-# Optionally (if available in your pipeline file)
-bin/streme-parser analyze-expression outputs/motif_regression_features.tsv path/to/expression.tsv \
-  --output outputs/motif_analysis_results
-
-# Full pipeline (consolidate → validate → feature extraction)
+# Full pipeline (consolidate → validate)
 bin/streme-parser full /path/to/streme_results --output outputs/ --threshold 0.75
 ```
 
 Notes:
 
 - The pipeline script in `pipelines/streme_pipeline.py` orchestrates CLI tools in `cli_tools/`.
-- If you see errors or unexpected behavior, you can always call the underlying Python CLI tools directly as shown in Quickstart above.
+- For feature generation, use the direct CLI approach shown in the Quickstart rather than pipeline wrappers.
+- If you see errors or unexpected behavior, you can always call the underlying Python CLI tools directly.
 
 
 ## Outputs in detail
