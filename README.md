@@ -51,7 +51,8 @@ pip install -r requirements.txt
 - `scripts/`
   - `remote_streme_all_lines.sh`: SLURM array job to run RepeatMasker + STREME per FASTA
   - `consolidate_streme_results.sh`: Example shell consolidation helper
-- `docs/`: Additional notes and guides
+- `docs/`: Additional documentation
+  - `METHODS.md`: **Comprehensive Materials and Methods** for publication
 
 
 ## Inputs and expected files
@@ -252,6 +253,35 @@ After STREME completes, consolidate:
 python cli_tools/streme_sites_consolidator.py consolidate /path/to/streme_results \
   --output outputs/consolidated_streme_sites
 ```
+
+## Methodology and Statistical Approach
+
+This pipeline implements two complementary approaches for motif-expression analysis:
+
+### **Absolute Analysis**
+- Models expression as a function of motif features within each genetic line
+- Uses traditional cis-regulatory theory with additive motif effects
+- Suitable for understanding line-specific regulatory programs
+
+### **Relative Analysis** (Recommended)
+- Models expression differences as a function of regulatory differences from a reference line
+- Controls for genetic background and trans-acting factors
+- Directly addresses the biological question: "How do regulatory changes explain expression changes?"
+
+### **Statistical Framework**
+- **Multiple algorithms**: Linear, Ridge, Lasso, Random Forest, Gradient Boosting
+- **Cross-validation**: GroupKFold to prevent data leakage (genes never split between train/test)
+- **Feature engineering**: Presence/absence, counts, positions, sequence composition
+- **Performance metrics**: Cross-validated R², RMSE, feature importance
+
+📖 **For complete Materials and Methods** (suitable for publication): See [`docs/METHODS.md`](docs/METHODS.md)
+
+The methods document includes:
+- Detailed algorithmic descriptions and parameter justifications
+- Statistical model selection rationale with literature support
+- Quality control procedures and validation approaches
+- Assumptions, limitations, and recommended extensions
+- Complete reference list for methodological approaches
 
 
 ## Tips and troubleshooting
