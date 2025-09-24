@@ -126,6 +126,7 @@ import pandas as pd
 df = pd.read_csv('outputs/motif_regression_features.csv')
 df.to_csv('outputs/motif_regression_features.tsv', sep='\t', index=False)
 PY
+   ```
 
   ```bash
 python cli_tools/motif_expression_analyzer.py \
