@@ -178,9 +178,11 @@ bin/streme-parser --help
 bin/streme-parser consolidate /path/to/streme_results --output outputs/
 bin/streme-parser validate outputs/consolidated_streme_sites.tsv
 bin/streme-parser analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --output results/
+bin/streme-parser analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --reference-line IM500 --output results/
 
 # Full pipeline (consolidate → validate → analyze)
 bin/streme-parser full /path/to/streme_results expression.tsv --output outputs/ --analysis-type relative
+bin/streme-parser full /path/to/streme_results expression.tsv --output outputs/ --analysis-type relative --reference-line IM500
 ```
 
 **Pipeline commands available:**
@@ -191,7 +193,8 @@ bin/streme-parser full /path/to/streme_results expression.tsv --output outputs/ 
 
 **Expression analysis types:**
 - `--type absolute`: Per-line analysis (each line analyzed independently)
-- `--type relative`: Comparative analysis (each line vs IM767 baseline) - **recommended**
+- `--type relative`: Comparative analysis (each line vs reference baseline) - **recommended**
+- `--reference-line`: Set reference line for relative analysis (default: IM767)
 
 **Direct pipeline usage:**
 ```bash

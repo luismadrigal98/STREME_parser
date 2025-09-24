@@ -51,12 +51,15 @@ Examples:
   # Step 3: Expression analysis
   %(prog)s analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --output results/
   
+  # Step 3: Expression analysis with custom reference
+  %(prog)s analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --reference-line IM500 --output results/
+  
   # Full pipeline
   %(prog)s full /path/to/streme/results expression.tsv --output outputs/ --analysis-type relative
 
 Expression Analysis Types:
   - absolute: Per-line analysis (each line analyzed independently)  
-  - relative: Comparative analysis (each line compared to IM767 baseline)
+  - relative: Comparative analysis (each line compared to reference baseline)
         """
     )
     
@@ -78,7 +81,9 @@ Expression Analysis Types:
     analyze_parser.add_argument('consolidated_file', help='Consolidated motif TSV file')
     analyze_parser.add_argument('expression_file', help='Expression data file (long or wide format)')
     analyze_parser.add_argument('--type', choices=['absolute', 'relative'], default='relative',
-                               help='Analysis type: absolute (per-line) or relative (vs IM767)')
+                               help='Analysis type: absolute (per-line) or relative (vs reference line)')
+    analyze_parser.add_argument('--reference-line', '-r', default='IM767',
+                               help='Reference line for relative analysis (default: IM767)')
     analyze_parser.add_argument('--output', '-o', default='analysis_results/',
                                help='Output directory for analysis results')
     analyze_parser.add_argument('--detailed', action='store_true',
@@ -94,6 +99,8 @@ Expression Analysis Types:
     full_parser.add_argument('--threshold', '-t', type=float, default=0.75, help='Similarity threshold')
     full_parser.add_argument('--analysis-type', choices=['absolute', 'relative'], default='relative',
                             help='Analysis type for expression analysis step')
+    full_parser.add_argument('--reference-line', '-r', default='IM767',
+                            help='Reference line for relative analysis (default: IM767)')
     
     args = parser.parse_args()
     
@@ -145,6 +152,8 @@ Expression Analysis Types:
             cmd.append('--detailed')
         if args.top_motifs:
             cmd.extend(['--top-motifs', str(args.top_motifs)])
+        if args.type == 'relative':
+            cmd.extend(['--reference-line', args.reference_line])
         
         success = run_command(cmd, f"Running {args.type} motif-expression analysis")
         
@@ -189,7 +198,11 @@ Expression Analysis Types:
                 '--output', analysis_output
             ]
             
+            if args.analysis_type == 'relative':
+                cmd3.extend(['--reference-line', args.reference_line])
+            
             run_command(cmd3, f"Step 3: Running {args.analysis_type} motif-expression analysis")
+            
             
             print(f"\n🎉 Full pipeline completed!")
             print(f"Consolidation results: {args.output}")
