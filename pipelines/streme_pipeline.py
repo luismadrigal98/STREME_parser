@@ -39,7 +39,8 @@ Pipeline Steps:
   1. consolidate     - Consolidate STREME motifs across lines
   2. validate        - Validate motif consolidation quality
   3. analyze         - Run motif-expression analysis (absolute or relative)
-  4. full            - Run complete pipeline (steps 1-3)
+  4. gene-specific   - Run gene-focused analysis with all motifs
+  5. full            - Run complete pipeline (steps 1-3)
 
 Examples:
   # Step 1: Consolidate motifs
@@ -53,6 +54,9 @@ Examples:
   
   # Step 3: Expression analysis with custom reference
   %(prog)s analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --reference-line IM500 --output results/
+  
+  # Step 4: Gene-specific analysis  
+  %(prog)s gene-specific outputs/consolidated_streme_sites.tsv expression.tsv --genes AT1G01010,AT1G01020 --type relative
   
   # Full pipeline
   %(prog)s full /path/to/streme/results expression.tsv --output outputs/ --analysis-type relative
@@ -90,6 +94,23 @@ Expression Analysis Types:
                                help='Use detailed motif features (not just presence/absence)')
     analyze_parser.add_argument('--top-motifs', type=int,
                                help='Only use top N most important motifs')
+    analyze_parser.add_argument('--selection-method', choices=['frequency', 'variance', 'expression_corr'], 
+                               default='variance',
+                               help='Method for selecting top motifs: frequency (conservative), variance (differential), expression_corr (correlated)')
+    
+    # Gene-specific analysis subcommand
+    gene_parser = subparsers.add_parser('gene-specific', help='Run gene-specific motif analysis')
+    gene_parser.add_argument('consolidated_file', help='Consolidated motif TSV file')
+    gene_parser.add_argument('expression_file', help='Expression data file')
+    gene_parser.add_argument('--genes', help='Comma-separated list of target genes')
+    gene_parser.add_argument('--gene-file', help='File containing one gene ID per line')
+    gene_parser.add_argument('--type', choices=['absolute', 'relative'], default='relative',
+                            help='Analysis type (default: relative)')
+    gene_parser.add_argument('--reference-line', '-r', default='IM767',
+                            help='Reference line for relative analysis (default: IM767)')
+    gene_parser.add_argument('--output', '-o', default='gene_specific_results/',
+                            help='Output directory')
+    
     
     # Full pipeline subcommand
     full_parser = subparsers.add_parser('full', help='Run complete pipeline')
@@ -154,8 +175,27 @@ Expression Analysis Types:
             cmd.extend(['--top-motifs', str(args.top_motifs)])
         if args.type == 'relative':
             cmd.extend(['--reference-line', args.reference_line])
+            cmd.extend(['--selection-method', args.selection_method])
         
         success = run_command(cmd, f"Running {args.type} motif-expression analysis")
+        
+    elif args.command == 'gene-specific':
+        cmd = [
+            'python', str(project_root / 'cli_tools' / 'gene_specific_analyzer.py'),
+            args.consolidated_file,
+            args.expression_file,
+            '--type', args.type,
+            '--output', args.output
+        ]
+        
+        if args.genes:
+            cmd.extend(['--genes', args.genes])
+        if args.gene_file:
+            cmd.extend(['--gene-file', args.gene_file])
+        if args.type == 'relative':
+            cmd.extend(['--reference-line', args.reference_line])
+        
+        success = run_command(cmd, f"Running gene-specific {args.type} analysis")
         
     elif args.command == 'full':
         # Step 1: Consolidate motifs

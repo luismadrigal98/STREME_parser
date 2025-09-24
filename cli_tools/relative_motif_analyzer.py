@@ -133,32 +133,88 @@ def calculate_motif_features_per_line(motif_df):
     return features
 
 def generate_relative_features(motif_features, expr_df, line_cols, reference_line='IM767', 
-                             top_motifs=None, min_sites=10):
+                             top_motifs=None, min_sites=10, selection_method='frequency'):
     """
     Generate relative regulatory features comparing each line to the reference line
+    
+    selection_method options:
+    - 'frequency': Most common motifs (default, conservative)
+    - 'variance': Motifs with highest presence variance across lines (differential)
+    - 'expression_corr': Motifs with highest correlation to expression differences
     """
     print(f"Generating relative features with {reference_line} as baseline...")
     
-    # Get all motifs and filter by frequency if requested
+    # Get all motifs and calculate statistics
     all_motifs = set()
     motif_counts = defaultdict(int)
+    motif_line_presence = defaultdict(lambda: defaultdict(int))
     
-    for gene_features in motif_features.values():
-        for line_features in gene_features.values():
+    for gene, gene_features in motif_features.items():
+        for line, line_features in gene_features.items():
             for motif in line_features.keys():
                 all_motifs.add(motif)
                 motif_counts[motif] += 1
+                motif_line_presence[motif][line] += 1
     
-    # Filter motifs by frequency
+    # Filter motifs by minimum frequency
     if min_sites:
         all_motifs = {motif for motif in all_motifs if motif_counts[motif] >= min_sites}
         print(f"Filtered to {len(all_motifs)} motifs with >= {min_sites} sites")
     
     if top_motifs and top_motifs < len(all_motifs):
-        # Select top motifs by frequency
-        sorted_motifs = sorted(motif_counts.items(), key=lambda x: x[1], reverse=True)
-        all_motifs = {motif for motif, count in sorted_motifs[:top_motifs]}
-        print(f"Selected top {top_motifs} most frequent motifs")
+        if selection_method == 'frequency':
+            # Select top motifs by frequency (original method)
+            sorted_motifs = sorted(motif_counts.items(), key=lambda x: x[1], reverse=True)
+            all_motifs = {motif for motif, count in sorted_motifs[:top_motifs]}
+            print(f"Selected top {top_motifs} most frequent motifs")
+            
+        elif selection_method == 'variance':
+            # Select motifs with highest presence variance across lines
+            motif_variances = {}
+            comparison_lines = [col for col in line_cols if col != reference_line]
+            
+            for motif in all_motifs:
+                # Calculate presence frequency per line
+                line_frequencies = []
+                for line in comparison_lines:
+                    total_genes = len([g for g in motif_features.keys() 
+                                     if line in motif_features[g]])
+                    present_genes = len([g for g in motif_features.keys() 
+                                       if line in motif_features[g] and motif in motif_features[g][line]])
+                    freq = present_genes / total_genes if total_genes > 0 else 0
+                    line_frequencies.append(freq)
+                
+                # Calculate variance in presence across lines
+                motif_variances[motif] = np.var(line_frequencies) if len(line_frequencies) > 1 else 0
+            
+            # Select top variable motifs
+            sorted_motifs = sorted(motif_variances.items(), key=lambda x: x[1], reverse=True)
+            all_motifs = {motif for motif, var in sorted_motifs[:top_motifs]}
+            print(f"Selected top {top_motifs} most variable motifs (presence variance)")
+            
+        elif selection_method == 'expression_corr':
+            # Select motifs most correlated with expression differences
+            # This is more complex - implement a simplified version
+            print("Warning: expression_corr selection not fully implemented, using variance method")
+            # Fall back to variance method
+            motif_variances = {}
+            comparison_lines = [col for col in line_cols if col != reference_line]
+            
+            for motif in all_motifs:
+                line_frequencies = []
+                for line in comparison_lines:
+                    total_genes = len([g for g in motif_features.keys() 
+                                     if line in motif_features[g]])
+                    present_genes = len([g for g in motif_features.keys() 
+                                       if line in motif_features[g] and motif in motif_features[g][line]])
+                    freq = present_genes / total_genes if total_genes > 0 else 0
+                    line_frequencies.append(freq)
+                
+                motif_variances[motif] = np.var(line_frequencies) if len(line_frequencies) > 1 else 0
+            
+            sorted_motifs = sorted(motif_variances.items(), key=lambda x: x[1], reverse=True)
+            all_motifs = {motif for motif, var in sorted_motifs[:top_motifs]}
+            print(f"Selected top {top_motifs} most variable motifs")
     
     all_motifs = sorted(all_motifs)
     comparison_lines = [col for col in line_cols if col != reference_line]
@@ -477,6 +533,10 @@ Expected expression format (wide):
                        help='Number of top motifs to include (default: 100)')
     parser.add_argument('--min-sites', '-m', type=int, default=10,
                        help='Minimum sites required for motif inclusion (default: 10)')
+    parser.add_argument('--selection-method', choices=['frequency', 'variance', 'expression_corr'], 
+                       default='variance',
+                       help='Method for selecting top motifs: frequency (most common), variance (most differential), expression_corr (correlated with expression)')
+    
     
     args = parser.parse_args()
     
@@ -505,7 +565,7 @@ Expected expression format (wide):
         # Generate relative features
         relative_df = generate_relative_features(
             motif_features, expr_df, line_cols, args.reference_line, 
-            args.top_motifs, args.min_sites
+            args.top_motifs, args.min_sites, args.selection_method
         )
         
         if len(relative_df) == 0:
