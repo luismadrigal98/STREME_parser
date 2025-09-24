@@ -163,30 +163,50 @@ python cli_tools/comprehensive_motif_analyzer.py \
   Outputs include: `feature_importance.tsv`, `analysis_summary.md`.
 
 
-## Pipeline wrapper (optional)
+## Pipeline wrapper (recommended)
 
-The wrapper forwards to `pipelines/streme_pipeline.py` and exposes subcommands.
+The wrapper forwards to `pipelines/streme_pipeline.py` and now includes expression analysis commands.
 
 ```bash
-# Ensure it’s executable
+# Ensure it's executable
 chmod +x bin/streme-parser
 
 # Show help
 bin/streme-parser --help
 
-# Examples
+# Individual steps
 bin/streme-parser consolidate /path/to/streme_results --output outputs/
 bin/streme-parser validate outputs/consolidated_streme_sites.tsv
+bin/streme-parser analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --output results/
 
-# Full pipeline (consolidate → validate)
-bin/streme-parser full /path/to/streme_results --output outputs/ --threshold 0.75
+# Full pipeline (consolidate → validate → analyze)
+bin/streme-parser full /path/to/streme_results expression.tsv --output outputs/ --analysis-type relative
+```
+
+**Pipeline commands available:**
+- `consolidate`: Consolidate STREME motifs across lines
+- `validate`: Validate motif consolidation quality  
+- `analyze`: Run motif-expression analysis (absolute or relative)
+- `full`: Complete pipeline (all three steps)
+
+**Expression analysis types:**
+- `--type absolute`: Per-line analysis (each line analyzed independently)
+- `--type relative`: Comparative analysis (each line vs IM767 baseline) - **recommended**
+
+**Direct pipeline usage:**
+```bash
+# Relative analysis (recommended)
+python pipelines/streme_pipeline.py analyze consolidated_motifs.tsv expression.tsv --type relative
+
+# Full pipeline with expression analysis
+python pipelines/streme_pipeline.py full /path/to/streme_results expression.tsv --analysis-type relative
 ```
 
 Notes:
 
-- The pipeline script in `pipelines/streme_pipeline.py` orchestrates CLI tools in `cli_tools/`.
-- For feature generation, use the direct CLI approach shown in the Quickstart rather than pipeline wrappers.
-- If you see errors or unexpected behavior, you can always call the underlying Python CLI tools directly.
+- The pipeline now includes integrated expression analysis alongside motif processing
+- Both absolute and relative analysis types are supported via the wrapper
+- For advanced options (detailed features, top motifs), use the CLI tools directly
 
 
 ## Outputs in detail
