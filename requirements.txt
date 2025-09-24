@@ -1,22 +1,31 @@
-# MEME Analysis Pipeline Requirements
-# Python 3.7+ required
+# STREME Parser - Comprehensive Motif Discovery and Analysis Pipeline
+# Python 3.8+ required
 
-# Biological sequence analysis
-biopython>=1.79
+# Core dependencies for biological sequence analysis
+biopython>=1.78
 
 # Data manipulation and analysis
 pandas>=1.3.0
-numpy>=1.21.0
+numpy>=1.19.0
+scipy>=1.7.0
 
-# Command line interface enhancements
-argparse>=1.4.0
+# Statistical analysis and modeling
+statsmodels>=0.12.0
+scikit-learn>=1.0.0
 
-# File system operations
-pathlib2>=2.3.6
+# Visualization and plotting
+matplotlib>=3.3.0
+seaborn>=0.11.0
 
-# Regular expressions (built-in, listed for clarity)
-# re - built-in module
+# Configuration and file handling
+pyyaml>=5.4.0
 
-# Optional: For advanced analysis
-# scipy>=1.7.0  # Uncomment if statistical analysis needed
-# matplotlib>=3.5.0  # Uncomment if plotting needed
+# Enhanced command line interfaces
+argparse  # Built-in module, included for completeness
+
+# File system operations (Python 3.8+ has pathlib built-in)
+# pathlib2>=2.3.6  # Only needed for Python < 3.4
+
+# Additional utilities for advanced analysis
+joblib>=1.0.0  # For parallel processing
+tqdm>=4.60.0   # Progress bars for long-running operations
