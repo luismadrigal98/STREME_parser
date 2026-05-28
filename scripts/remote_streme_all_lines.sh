@@ -10,58 +10,56 @@
 #SBATCH --time=10-00:00:00
 #SBATCH --mail-user=madrigalrocalj@ku.edu
 #SBATCH --mail-type=END,FAIL
-#SBATCH --array=1-10%5
+#SBATCH --array=1-2
+
+# Genome-generic STREME preparation as a SLURM array job.
+# Each array task prepares one genome from a manifest:
+#   genome -> promoters -> mask -> background -> STREME (streme_<genome>/).
+#
+# Submit AFTER editing the variables below:
+#   sbatch --array=1-<N> scripts/remote_streme_all_lines.sh
+# where <N> is the number of genome rows in the manifest.
+
+set -euo pipefail
 
 module load conda
 eval "$(conda shell.bash hook)"
 conda activate tf
 
-# Define the path to the script
-cd /home/l338m483/scratch/MEME_Test/All_lines
+# ----- Edit these -----
+REPO_DIR="${REPO_DIR:-$HOME/MEME_related}"          # path to this repository
+MANIFEST="${MANIFEST:-genomes.tsv}"                  # genome  fasta  annotation [expression]
+OUTPUT_ROOT="${OUTPUT_ROOT:-prepared}"               # where streme_<genome>/ dirs are written
+UPSTREAM="${UPSTREAM:-1000}"
+MASKER="${MASKER:-repeatmasker}"                     # repeatmasker | dust | none
+SPECIES="${SPECIES:-}"                               # RepeatMasker species (optional)
+THREADS="${SLURM_CPUS_PER_TASK:-10}"                 # threads for the heavy steps
+# ----------------------
 
-# Create array of FASTA files
-FASTA_FILES=(*.fasta)
-TOTAL_FILES=${#FASTA_FILES[@]}
-
-# Check if array index is valid
-if [ $SLURM_ARRAY_TASK_ID -gt $TOTAL_FILES ]; then
-    echo "Array task ID $SLURM_ARRAY_TASK_ID exceeds number of files ($TOTAL_FILES)"
+# Pick the manifest row for this array task (skip the header line).
+ROW_NUM=$((SLURM_ARRAY_TASK_ID + 1))
+LINE=$(sed -n "${ROW_NUM}p" "$MANIFEST")
+if [ -z "$LINE" ]; then
+    echo "No manifest row for array task $SLURM_ARRAY_TASK_ID (line $ROW_NUM of $MANIFEST)"
     exit 1
 fi
 
-# Get the current file (array index starts at 1, bash array starts at 0)
-CURRENT_FILE=${FASTA_FILES[$((SLURM_ARRAY_TASK_ID-1))]}
+GENOME=$(echo "$LINE" | cut -f1)
+FASTA=$(echo "$LINE" | cut -f2)
+ANNOT=$(echo "$LINE" | cut -f3)
 
-echo "Processing file: $CURRENT_FILE"
-echo "Task ID: $SLURM_ARRAY_TASK_ID"
-echo "Job ID: $SLURM_ARRAY_JOB_ID"
+echo "Task $SLURM_ARRAY_TASK_ID -> genome=$GENOME fasta=$FASTA annotation=$ANNOT"
 
-# Run RepeatMasker for current file
-echo "Running RepeatMasker on $CURRENT_FILE"
-if RepeatMasker -species "Mimulus guttatus" "$CURRENT_FILE"; then
-    echo "RepeatMasker completed successfully for $CURRENT_FILE"
-else
-    echo "RepeatMasker failed for $CURRENT_FILE"
-    exit 1
+SPECIES_ARG=()
+if [ -n "$SPECIES" ]; then
+    SPECIES_ARG=(--species "$SPECIES")
 fi
 
-# Check if masked file was created
-MASKED_FILE="${CURRENT_FILE}.masked"
-if [ ! -f "$MASKED_FILE" ]; then
-    echo "Masked file $MASKED_FILE not found"
-    exit 1
-fi
+python "$REPO_DIR/pipelines/streme_pipeline.py" prepare \
+    --genome "$GENOME" --fasta "$FASTA" --annotation "$ANNOT" \
+    --upstream "$UPSTREAM" --mask "$MASKER" "${SPECIES_ARG[@]}" \
+    --threads "$THREADS" --output "$OUTPUT_ROOT"
 
-# Run STREME for current masked file
-echo "Running STREME on $MASKED_FILE"
-OUTPUT_DIR="streme_$(basename "$CURRENT_FILE" '.fasta')"
-
-if streme --p "$MASKED_FILE" --nmotifs 200 --thresh 0.05 --minw 6 --maxw 20 -o "$OUTPUT_DIR"; then
-    echo "STREME completed successfully for $MASKED_FILE"
-    echo "Output saved to: $OUTPUT_DIR"
-else
-    echo "STREME failed for $MASKED_FILE"
-    exit 1
-fi
-
-echo "Task completed successfully for $CURRENT_FILE"
+echo "Done: $GENOME -> $OUTPUT_ROOT/streme_$GENOME"
+echo "After all tasks finish, consolidate with:"
+echo "  python $REPO_DIR/cli_tools/streme_sites_consolidator.py consolidate $OUTPUT_ROOT --output outputs/consolidated_streme_sites"

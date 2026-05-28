@@ -1,206 +1,139 @@
-# Mimulus guttatus Promoter Detection Pipeline
-# Configuration file for promoter analysis workflow
+# Promoter / Regulatory-Element Discovery Pipeline
+# Genome-generic configuration. Each preprocessing step maps to a runnable
+# subcommand of pipelines/streme_pipeline.py (prepare) or cli_tools/genome_prep.py.
+#
+# Works for any genome+annotation pair (e.g. Penstemon virgatus, P. barbatus,
+# Mimulus guttatus). Provide one or many genomes; multiple genomes are prepared
+# in parallel, a single genome parallelises its heavy steps via --threads.
 
 project:
-  name: "Mimulus guttatus Promoter Analysis"
-  species: "Mimulus guttatus"
-  genome_version: "v2.0"
+  name: "Promoter Analysis"
+  description: "Detect promoters and regulatory elements from genome assemblies"
   date_created: "2025-07-08"
-  description: "Pipeline for detecting promoters and regulatory elements in Mimulus guttatus"
 
-# Input configuration
+# ---------------------------------------------------------------------------
+# Inputs: one or many (genome, annotation) pairs.
+# Either list genomes inline here, or point --manifest at a TSV with columns:
+#   genome    fasta    annotation    [expression]
+# ---------------------------------------------------------------------------
 input:
-  sequences_file: "sequences.fasta"
-  region_type: "promoter"
-  upstream_bp: 1000
-  downstream_bp: 0
-  reference_genome: "Mimulus_guttatus_v2.0.fa"
+  manifest: "genomes.tsv"          # tab-separated; see example below
+  genomes:                         # inline alternative to a manifest
+    - name: "P_virgatus"
+      fasta: "/data/Penstemon_virgatus.fa"
+      annotation: "/data/Penstemon_virgatus.gff3"
+      expression: "/data/virgatus_expression.tsv"   # optional
+    - name: "P_barbatus"
+      fasta: "/data/Penstemon_barbatus.fa"
+      annotation: "/data/Penstemon_barbatus.gff3"
 
-# Phase 1: Sequence Preparation
-preprocessing:
-  low_complexity_removal:
-    tool: "dust"
-    output: "sequences.fasta.dusted.masked"
-    command: "dust sequences.fasta > sequences.fasta.dusted.masked"
-    status: "OPTIONAL"
-    notes: "This program is overly aggressive, so it could eliminate legitimate AT-rich regions that usually appear in promoters."
-  
-  repeat_masking:
-    tool: "RepeatMasker"
-    species: "Mimulus guttatus"
-    output: "sequences.fasta.masked"
-    command: 'RepeatMasker -species "Mimulus guttatus" sequences.fasta'
-  
-  background_model:
-    tool: "fasta-get-markov"
-    markov_order: 1
-    output: "background.txt"
-    command: "fasta-get-markov -m 1 sequences.fasta > background.txt"
+# ---------------------------------------------------------------------------
+# Parallelism
+#   jobs    = number of genomes prepared concurrently (process pool)
+#   threads = threads handed to each heavy step (RepeatMasker -pa, STREME)
+# Total cores used ~= jobs * threads.
+# ---------------------------------------------------------------------------
+parallelism:
+  jobs: 4
+  threads: 8
 
-# Phase 2: Motif Discovery
+# ---------------------------------------------------------------------------
+# Phase 0: Promoter extraction (pure Python, strand-aware, no external tools)
+#   CLI:  genome_prep.py extract-promoters genome.fa annot.gff3 -o promoters.fa
+#         --upstream 1000 --downstream 0 --feature-type gene [--avoid-overlap]
+# ---------------------------------------------------------------------------
+promoter_extraction:
+  upstream_bp: 1000          # bp upstream of the TSS taken as candidate promoter
+  downstream_bp: 0           # bp downstream of the TSS to include
+  feature_type: "gene"       # gene | mRNA | transcript
+  avoid_overlap: false       # clip a window short of an adjacent gene's body
+  min_length: 1              # drop promoters shorter than this
+
+# ---------------------------------------------------------------------------
+# Phase 1: Masking (auto-detected external tool; skip with mask: none)
+#   CLI:  genome_prep.py mask promoters.fa --masker repeatmasker --species "..."
+# ---------------------------------------------------------------------------
+masking:
+  masker: "repeatmasker"     # repeatmasker | dust | none
+  species: "Penstemon"       # RepeatMasker species/library (optional)
+  notes: >
+    dust is faster but aggressive and can remove legitimate AT-rich promoter
+    regions. RepeatMasker needs a species library available on the host.
+
+# ---------------------------------------------------------------------------
+# Phase 2: Background model (Markov) — optional, used as STREME --bfile
+#   CLI:  genome_prep.py background promoters.masked -o background.txt --order 1
+# ---------------------------------------------------------------------------
+background_model:
+  enabled: true
+  markov_order: 1
+
+# ---------------------------------------------------------------------------
+# Phase 3: Motif discovery (STREME)
+#   CLI:  genome_prep.py run-streme promoters.masked -o streme_<genome>
+#         --nmotifs 200 --minw 6 --maxw 20 --thresh 0.05 [--background background.txt]
+# Output dirs are named streme_<genome> so the consolidator can pick them up.
+# ---------------------------------------------------------------------------
 motif_discovery:
-  # meme:
-  #   tool: "MEME"
-  #   input: "sequences.fasta.masked"
-  #   output_dir: "meme_output"
-  #   parameters:
-  #     alphabet: "dna"
-  #     revcomp: true
-  #     mod: "zoops"  # Zero or one occurrence per sequence
-  #     nmotifs: 10
-  #     minw: 6
-  #     maxw: 20
-  #     evt: 0.01
-  #     minsites: 3
-  #     background_file: "background.txt"
-  #   command: >
-  #     meme All_gene_upstream_62_1kb/Genes_IM62_DNA_lifted.fasta.masked \
-  #     -dna -revcomp \
-  #     -mod zoops \
-  #     -nmotifs 20 \
-  #     -minw 6 -maxw 30 \
-  #     -minsites 200 \
-  #     -p 10 \
-  #     -bfile All_gene_upstream_62_1kb/model_order_1.txt \
-  #     -oc out_meme_2
+  tool: "STREME"
+  alphabet: "dna"
+  nmotifs: 200
+  minw: 6
+  maxw: 20
+  thresh: 0.05
 
-  streme:
-    tool: "STREME"
-    input: "sequences.fasta.masked"
-    output_dir: "streme_output"
-    parameters:
-      alphabet: "dna"
-      revcomp: true
-      nmotifs: 5
-      minw: 8
-      maxw: 15
-    command: >
-      streme --p All_gene_upstream_62_1kb/Genes_IM62_DNA_lifted.fasta.masked --nmotifs 10 --thresh 0.05 --minw 6 --maxw 20 -oc streme
+# ---------------------------------------------------------------------------
+# Phase 4: Consolidation across genomes
+#   CLI:  streme_sites_consolidator.py consolidate <output_root> \
+#           --output outputs/consolidated_streme_sites --threshold 0.75
+# Genome names are taken from the streme_<genome> directory names; a custom
+# --name-pattern regex can be supplied if your dir naming differs.
+# ---------------------------------------------------------------------------
+consolidation:
+  similarity_threshold: 0.75
+  merge_overlaps: true
+  overlap_threshold: 0.5
 
-# Phase 4: File Consolidation
-file_consolidation:
-  motif_extraction:
-    tool: "custom_script"
-    description: "Extract and consolidate motifs from STREME output"
-    input: "streme_output/streme.txt"
-    output: "consolidated_motifs.txt"
-    method: "pair_wise_processing"
-    script: |
-      # Process STREME output file line by line in pairs
-      # Extract motif information and consolidate
-      python consolidate_streme_output.py streme_output/streme.txt consolidated_motifs.txt
-  
-  sequence_grouping:
-    tool: "custom_script"
-    description: "Group sequences based on motif presence"
-    input: "sequences.fasta.masked"
-    motif_file: "consolidated_motifs.txt"
-    output: "grouped_sequences.txt"
-    command: |
-      # Group sequences that contain similar motifs (simple version, no dependencies)
-      python group_sequences_simple.py sequences.fasta.masked consolidated_motifs.txt grouped_sequences.txt
+# ---------------------------------------------------------------------------
+# Phase 5: Expression analysis (per-genome / relative-to-reference)
+#   CLI:  streme_pipeline.py analyze consolidated.tsv expression.tsv \
+#           --type relative --reference-genome <baseline>
+# Expression tables: long (Gene | Genome | Expression) or wide (one column per
+# genome). The legacy 'Line'/'line' column names are still accepted.
+# ---------------------------------------------------------------------------
+expression_analysis:
+  type: "relative"           # relative | absolute
+  reference_genome: "P_virgatus"
+  selection_method: "variance"
+  top_motifs: 100
+  min_sites: 10
 
-# Phase 3: Regulatory Element Analysis
-regulatory_analysis:
-  plantpan:
-    tool: "PlantPAN 4.0"
-    url: "https://plantpan.itps.ncku.edu.tw/plantpan4/"
-    analysis_types:
-      - "TFBS_prediction"
-      - "CpG_islands"
-      - "tandem_repeats"
-    species_matrices: 115
-    total_matrices: 3428
-
-  fimo:
-    tool: "FIMO"
-    motif_database: "plant_motif_database.meme"
-    threshold: 0.0001
-    output: "fimo_results.txt"
-    command: >
-      fimo --thresh 0.0001
-      plant_motif_database.meme
-      sequences.fasta.masked
-
-# Phase 5: Validation and Refinement
+# ---------------------------------------------------------------------------
+# Validation / refinement against external motif databases (optional, manual)
+# ---------------------------------------------------------------------------
 validation:
   tomtom:
-    tool: "TOMTOM"
-    input_motifs: "streme_output/streme.txt"
-    reference_database: "plant_motif_database.meme"
-    output: "tomtom_results.txt"
     threshold: 0.01
-    command: >
-      tomtom -thresh 0.01
-      streme_output/streme.txt
-      plant_motif_database.meme
+  fimo:
+    threshold: 0.0001
 
-  centrimo:
-    tool: "CentriMo"
-    input_motifs: "streme_output/streme.txt"
-    sequences: "sequences.fasta.masked"
-    output: "centrimo_results.txt"
-    command: >
-      centrimo
-      sequences.fasta.masked
-      streme_output/streme.txt
+# ---------------------------------------------------------------------------
+# Example manifest (write to genomes.tsv, tab-separated, header required)
+# ---------------------------------------------------------------------------
+# genome       fasta                          annotation                     expression
+# P_virgatus   /data/Penstemon_virgatus.fa    /data/Penstemon_virgatus.gff3  /data/virgatus_expr.tsv
+# P_barbatus   /data/Penstemon_barbatus.fa    /data/Penstemon_barbatus.gff3
 
-# Database resources
+# Database resources for downstream interpretation
 databases:
-  plant_databases:
-    - name: "PlantProm DB"
-      description: "Experimentally verified plant promoters"
-      url: "http://linux1.softberry.com/berry.phtml?topic=plantprom"
-    
-    - name: "PLACE"
-      description: "Plant cis-acting regulatory element database"
-      url: "https://www.dna.affrc.go.jp/PLACE/"
-    
-    - name: "PlantTFDB"
-      description: "Plant transcription factor database"
-      url: "http://planttfdb.cbi.pku.edu.cn/"
+  - name: "PlantTFDB"
+    url: "http://planttfdb.cbi.pku.edu.cn/"
+  - name: "PLACE"
+    url: "https://www.dna.affrc.go.jp/PLACE/"
+  - name: "PlantPAN 4.0"
+    url: "https://plantpan.itps.ncku.edu.tw/plantpan4/"
 
-# Output files
-expected_outputs:
-  - "sequences.fasta.masked"
-  - "background.txt"
-  - "promoter_predictions.txt"
-  - "streme_output/streme.html"
-  - "streme_output/streme.txt"
-  - "consolidated_motifs.txt"
-  - "grouped_sequences.txt"
-  - "fimo_results.txt"
-  - "tomtom_results.txt"
-  - "centrimo_results.txt"
-
-# Quality control thresholds
-quality_control:
-  motif_discovery:
-    max_evalue: 0.01
-    min_sites: 3
-    min_width: 6
-    max_width: 20
-  
-  tfbs_prediction:
-    fimo_threshold: 0.0001
-    tomtom_threshold: 0.01
-
-# Computational requirements
-resources:
-  cpu_cores: 4
-  memory_gb: 16
-  estimated_runtime: "2-4 hours"
-  disk_space_gb: 10
-
-# Notes and references
 notes:
-  - "Mimulus guttatus is a model plant system with extensive genomic resources"
-  - "Use zoops model for promoter analysis (zero or one occurrence per sequence)"
-  - "TSSPlant achieves higher accuracy for plant promoter prediction"
-  - "PlantPAN 4.0 provides comprehensive plant TFBS analysis"
-  - "Consider both TATA and TATA-less promoters"
-
-references:
-  - "TSSPlant: a new tool for prediction of plant transcription start sites"
-  - "PlantPAN 4.0: updated database for plant promoter analysis"
-  - "MEME Suite: tools for motif discovery and searching"
+  - "Use the zoops occurrence model for promoter analysis if switching to MEME."
+  - "Consider both TATA and TATA-less promoters."
+  - "Promoter extraction respects strand and clips at contig boundaries."

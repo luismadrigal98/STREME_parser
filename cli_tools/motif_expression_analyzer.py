@@ -50,69 +50,83 @@ from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings('ignore')
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import genome_terms
+
 def load_motif_features(motif_file):
     """Load motif features from extract-features output"""
     print(f"Loading motif features from: {motif_file}")
-    
+
     # Load the feature matrix
     df = pd.read_csv(motif_file, sep='\t')
-    
+    df = genome_terms.normalize_motif_genome_column(df)
+
     print(f"Found {len(df)} gene-line combinations")
     print(f"Found {len([c for c in df.columns if c.endswith('_present')])} motifs")
     
     return df
 
-def load_expression_data(expression_file):
+def load_expression_data(expression_file, reference=None):
     """
     Load expression data. Supports two formats:
-    1. Long format: Gene | Line | Expression
-    2. Wide format: gene | LRTadd | IM62 | IM155 | ... | IM767
+    1. Long format: Gene | Genome | Expression   (legacy 'Line' accepted)
+    2. Wide format: gene | LRTadd | <genome_1> | <genome_2> | ... (one column per genome)
+
+    `reference` names the baseline genome to drop (its values are 0 by
+    construction in relative tables). When None, an all-zero genome column is
+    auto-detected in wide tables and dropped.
     """
     print(f"Loading expression data from: {expression_file}")
-    
+
     expr_df = pd.read_csv(expression_file, sep='\t')
-    
-    # Detect format based on columns
-    if len(expr_df.columns) > 3 and any(col.startswith('IM') for col in expr_df.columns):
+
+    if genome_terms.is_wide_expression(expr_df):
         # Wide format - convert to long format
         print("Detected wide format - converting to long format")
-        
+
         gene_col = expr_df.columns[0]
-        line_cols = [col for col in expr_df.columns if col not in [gene_col, 'LRTadd'] and col.startswith('IM')]
-        
+        genome_cols = genome_terms.wide_genome_columns(expr_df)
+
+        drop_ref = reference if (reference and reference in genome_cols) else \
+            genome_terms.infer_zero_reference(expr_df, genome_cols)
+
         # Melt to long format
         long_df = expr_df.melt(
-            id_vars=[gene_col], 
-            value_vars=line_cols,
-            var_name='Line', 
+            id_vars=[gene_col],
+            value_vars=genome_cols,
+            var_name='Line',
             value_name='Expression'
         )
         long_df = long_df.rename(columns={gene_col: 'Gene'})
-        
-        # Remove IM767 baseline (expression = 0)
-        long_df = long_df[long_df['Line'] != 'IM767'].copy()
-        
+
+        # Remove the baseline genome (expression = 0 by construction)
+        if drop_ref:
+            long_df = long_df[long_df['Line'] != drop_ref].copy()
+            print(f"Dropped baseline genome: {drop_ref}")
+
         print(f"Converted wide format to long format")
-        print(f"Found expression data for {long_df['Gene'].nunique()} genes across {long_df['Line'].nunique()} lines")
-        print(f"Lines found: {sorted(long_df['Line'].unique())}")
-        
+        print(f"Found expression data for {long_df['Gene'].nunique()} genes across {long_df['Line'].nunique()} genomes")
+        print(f"Genomes found: {sorted(long_df['Line'].unique())}")
+
         return long_df
-    
+
     else:
-        # Long format (original)
-        # Ensure proper column names
+        # Long format
+        expr_df = genome_terms.normalize_expression_genome_column(expr_df)
         expected_cols = ['Gene', 'Line', 'Expression']
         if list(expr_df.columns) != expected_cols:
             print(f"Warning: Expected columns {expected_cols}, got {list(expr_df.columns)}")
-            print("Assuming first 3 columns are Gene, Line, Expression")
+            print("Assuming first 3 columns are Gene, Genome, Expression")
             expr_df.columns = expected_cols[:len(expr_df.columns)]
-        
-        # Remove IM767 entries (they should be 0 anyway)
-        expr_df = expr_df[expr_df['Line'] != 'IM767'].copy()
-        
-        print(f"Found expression data for {expr_df['Gene'].nunique()} genes across {expr_df['Line'].nunique()} lines")
-        print(f"Lines found: {sorted(expr_df['Line'].unique())}")
-        
+
+        # Remove baseline genome entries (they should be 0 anyway)
+        if reference:
+            expr_df = expr_df[expr_df['Line'] != reference].copy()
+            print(f"Dropped baseline genome: {reference}")
+
+        print(f"Found expression data for {expr_df['Gene'].nunique()} genes across {expr_df['Line'].nunique()} genomes")
+        print(f"Genomes found: {sorted(expr_df['Line'].unique())}")
+
         return expr_df
 
 def merge_motif_expression_data(motif_df, expr_df):
@@ -363,9 +377,13 @@ Note: For RELATIVE analysis (comparing to IM767 baseline), use relative_motif_an
                        help='Output directory for results')
     parser.add_argument('--detailed', action='store_true',
                        help='Use detailed motif features (not just presence/absence)')
-    parser.add_argument('--top-motifs', type=int, 
+    parser.add_argument('--top-motifs', type=int,
                        help='Only use top N most important motifs')
-    
+    parser.add_argument('--reference-genome', '--reference-line', '-r',
+                       dest='reference_genome', default=None,
+                       help='Baseline genome to drop from wide/long expression '
+                            'tables (auto-detected from an all-zero column when omitted)')
+
     args = parser.parse_args()
     
     # Create output directory
@@ -378,7 +396,7 @@ Note: For RELATIVE analysis (comparing to IM767 baseline), use relative_motif_an
     try:
         # Load data
         motif_df = load_motif_features(args.motif_features)
-        expr_df = load_expression_data(args.expression_data)
+        expr_df = load_expression_data(args.expression_data, reference=args.reference_genome)
         
         # Merge data
         merged_df = merge_motif_expression_data(motif_df, expr_df)

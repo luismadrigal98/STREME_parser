@@ -35,15 +35,19 @@ from collections import defaultdict
 import warnings
 warnings.filterwarnings('ignore')
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import genome_terms
+
 def load_motif_data(motif_file):
     """Load consolidated motif data"""
     print(f"Loading consolidated motif data from: {motif_file}")
-    
+
     df = pd.read_csv(motif_file, sep='\t')
-    
+    df = genome_terms.normalize_motif_genome_column(df)
+
     print(f"Loaded {len(df)} motif sites")
     print(f"Genes: {df['gene_id'].nunique()}")
-    print(f"Lines: {df['line'].nunique()}")
+    print(f"Genomes: {df['line'].nunique()}")
     print(f"Motifs: {df['consolidated_motif_id'].nunique()}")
     
     return df
@@ -53,30 +57,31 @@ def load_expression_data(expression_file):
     print(f"Loading expression data from: {expression_file}")
     
     expr_df = pd.read_csv(expression_file, sep='\t')
-    
-    # Detect and convert format if needed (same logic as before)
-    if len(expr_df.columns) > 3 and any(col.startswith('IM') for col in expr_df.columns):
+
+    # Detect and convert format if needed (genome-generic; no 'IM' assumption)
+    if genome_terms.is_wide_expression(expr_df):
         print("Detected wide format - converting to long format")
-        
+
         gene_col = expr_df.columns[0]
-        line_cols = [col for col in expr_df.columns if col not in [gene_col, 'LRTadd'] and col.startswith('IM')]
-        
+        genome_cols = genome_terms.wide_genome_columns(expr_df)
+
         long_df = expr_df.melt(
-            id_vars=[gene_col], 
-            value_vars=line_cols,
-            var_name='Line', 
+            id_vars=[gene_col],
+            value_vars=genome_cols,
+            var_name='Line',
             value_name='Expression'
         )
         long_df = long_df.rename(columns={gene_col: 'Gene'})
-        
-        print(f"Found expression data for {long_df['Gene'].nunique()} genes across {long_df['Line'].nunique()} lines")
+
+        print(f"Found expression data for {long_df['Gene'].nunique()} genes across {long_df['Line'].nunique()} genomes")
         return long_df
-    
+
     else:
         # Long format
+        expr_df = genome_terms.normalize_expression_genome_column(expr_df)
         expected_cols = ['Gene', 'Line', 'Expression']
         if list(expr_df.columns) != expected_cols:
-            print(f"Assuming first 3 columns are Gene, Line, Expression")
+            print(f"Assuming first 3 columns are Gene, Genome, Expression")
             expr_df.columns = expected_cols[:len(expr_df.columns)]
         
         print(f"Found expression data for {expr_df['Gene'].nunique()} genes across {expr_df['Line'].nunique()} lines")
@@ -430,8 +435,7 @@ Examples:
     parser.add_argument('--gene-file', help='File containing one gene ID per line')
     parser.add_argument('--type', choices=['absolute', 'relative'], default='relative',
                        help='Analysis type (default: relative)')
-    parser.add_argument('--reference-line', '-r', default='IM767',
-                       help='Reference line for relative analysis (default: IM767)')
+    genome_terms.add_reference_argument(parser)
     parser.add_argument('--output', '-o', default='gene_specific_results/',
                        help='Output directory (default: gene_specific_results/)')
     

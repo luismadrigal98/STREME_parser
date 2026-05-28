@@ -31,6 +31,9 @@ import re
 import warnings
 warnings.filterwarnings('ignore')
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import genome_terms
+
 def calculate_position_features(motif_sites_df):
     """
     Calculate sophisticated position-based features for each motif in each gene-line
@@ -225,7 +228,8 @@ def load_consolidated_motif_data(motif_file):
     print(f"Loading consolidated motif data from: {motif_file}")
     
     df = pd.read_csv(motif_file, sep='\t')
-    
+    df = genome_terms.normalize_motif_genome_column(df)
+
     # Ensure required columns exist
     required_cols = ['gene_id', 'line', 'motif_id', 'consensus', 'sequence', 'position']
     missing_cols = [col for col in required_cols if col not in df.columns]

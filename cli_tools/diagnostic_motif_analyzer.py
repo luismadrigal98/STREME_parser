@@ -20,9 +20,13 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_squared_error
 import warnings
 import os
+import sys
 import argparse
 
 warnings.filterwarnings('ignore')
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import genome_terms
 
 def load_and_examine_data(motif_file, expr_file):
     """Load and provide detailed examination of input data"""
@@ -33,10 +37,11 @@ def load_and_examine_data(motif_file, expr_file):
     # Load motif data
     print(f"Loading motif data from: {motif_file}")
     motif_df = pd.read_csv(motif_file, sep='\t')
+    motif_df = genome_terms.normalize_motif_genome_column(motif_df)
     print(f"Motif data shape: {motif_df.shape}")
     print(f"Columns: {list(motif_df.columns)}")
     print(f"Unique genes: {motif_df['gene_id'].nunique()}")
-    print(f"Unique lines: {motif_df['line'].nunique()}")
+    print(f"Unique genomes: {motif_df['line'].nunique()}")
     print(f"Unique motifs: {motif_df['consolidated_motif_id'].nunique()}")
     
     # Load expression data
@@ -350,9 +355,8 @@ def main():
     parser = argparse.ArgumentParser(description="Diagnostic motif-expression analysis")
     parser.add_argument('motif_file', help='Consolidated motif sites file')
     parser.add_argument('expr_file', help='Expression data file')
-    parser.add_argument('--reference-line', default='IM767', 
-                       help='Reference line for relative analysis')
-    parser.add_argument('--output', default='diagnostic_results', 
+    genome_terms.add_reference_argument(parser)
+    parser.add_argument('--output', default='diagnostic_results',
                        help='Output directory')
     
     args = parser.parse_args()

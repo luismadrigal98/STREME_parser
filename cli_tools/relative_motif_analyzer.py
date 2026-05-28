@@ -30,12 +30,16 @@ from collections import defaultdict
 import warnings
 warnings.filterwarnings('ignore')
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import genome_terms
+
 def load_consolidated_motif_data(motif_file):
     """Load consolidated STREME sites data"""
     print(f"Loading consolidated motif data from: {motif_file}")
-    
+
     df = pd.read_csv(motif_file, sep='\t')
-    
+    df = genome_terms.normalize_motif_genome_column(df)
+
     # Ensure required columns exist
     required_cols = ['gene_id', 'line', 'consolidated_motif_id', 'motif_consensus', 'sequence', 'start_pos']
     missing_cols = [col for col in required_cols if col not in df.columns]
@@ -525,10 +529,9 @@ Expected expression format (wide):
     
     parser.add_argument('motif_sites_file', help='Consolidated STREME sites TSV file')
     parser.add_argument('expression_data', help='Wide-format expression data file')
-    parser.add_argument('--output', '-o', default='relative_analysis_results', 
+    parser.add_argument('--output', '-o', default='relative_analysis_results',
                        help='Output directory for results')
-    parser.add_argument('--reference-line', '-r', default='IM767',
-                       help='Reference line to use as baseline (default: IM767)')
+    genome_terms.add_reference_argument(parser)
     parser.add_argument('--top-motifs', '-t', type=int, default=100,
                        help='Number of top motifs to include (default: 100)')
     parser.add_argument('--min-sites', '-m', type=int, default=10,

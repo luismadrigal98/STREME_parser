@@ -77,29 +77,44 @@ def sequences_are_similar(seq1, seq2, threshold=0.75):
     
     return similarity >= threshold
 
-def extract_line_name(directory_name):
+def extract_genome_name(directory_name, pattern=None):
     """
-    Extract clean line name from STREME directory name
+    Extract a clean genome name from a STREME output directory name.
+
     Examples:
-    - streme_Genes_IM155_DNA_lifted -> IM155
-    - streme_IM502 -> IM502
+    - streme_P_virgatus              -> P_virgatus
+    - streme_Genes_IM155_DNA_lifted  -> IM155   (legacy Mimulus convention)
+    - streme_IM502                   -> IM502
+
+    A custom regex can be supplied via `pattern`; its first capture/match is
+    used. Otherwise the 'streme_' prefix and common suffixes are stripped, and
+    an IM-style token is recovered if present (backward compatibility).
     """
-    # Remove 'streme_' prefix
-    name = directory_name.replace('streme_', '')
-    
-    # Extract IM number using regex
+    name = directory_name
+    if name.startswith('streme_'):
+        name = name[len('streme_'):]
+
+    if pattern:
+        match = re.search(pattern, name)
+        if match:
+            return match.group(match.lastindex or 0)
+
+    for suffix in ('_DNA_lifted', '_DNA', '_genome', '.fasta', '.fa'):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+
+    # Backward compatibility: recover legacy IM identifiers when present.
     match = re.search(r'IM\d+', name)
     if match:
         return match.group()
-    
-    # Fallback: return the cleaned name
+
     return name
 
-def parse_sites_file(sites_file, line_name):
+def parse_sites_file(sites_file, genome_name):
     """
     Parse a STREME sites.tsv file and return structured data
     """
-    print(f"  Processing {sites_file} for line {line_name}")
+    print(f"  Processing {sites_file} for genome {genome_name}")
     
     try:
         # Read the TSV file manually to handle NaN values better
@@ -161,7 +176,7 @@ def parse_sites_file(sites_file, line_name):
                 
                 site_data = {
                     'original_motif_id': motif_id_val,
-                    'line': line_name,
+                    'genome': genome_name,
                     'gene_id': fields[col_indices['seq_ID']],
                     'start_pos': int(float(start_val)),  # Convert via float first to handle decimal strings
                     'end_pos': int(float(end_val)),
@@ -373,7 +388,7 @@ def merge_overlapping_motifs(motif_sites, overlap_threshold=0.5):
     groups = {}
     
     for site in motif_sites:
-        key = (site['gene_id'], site['line'], site['strand'], site['consolidated_motif_id'])
+        key = (site['gene_id'], site['genome'], site['strand'], site['consolidated_motif_id'])
         if key not in groups:
             groups[key] = []
         groups[key].append(site)
@@ -444,19 +459,19 @@ def merge_overlapping_motifs(motif_sites, overlap_threshold=0.5):
 
 def add_relative_positions(consolidated_data):
     """
-    Add relative position information per gene per line
+    Add relative position information per gene per genome
     """
     print("Adding relative position information...")
-    
-    # Group by gene and line
-    gene_line_groups = defaultdict(list)
-    
+
+    # Group by gene and genome
+    gene_genome_groups = defaultdict(list)
+
     for site in consolidated_data:
-        key = (site['gene_id'], site['line'])
-        gene_line_groups[key].append(site)
-    
+        key = (site['gene_id'], site['genome'])
+        gene_genome_groups[key].append(site)
+
     # Sort by position and add relative position info
-    for (gene_id, line), sites in gene_line_groups.items():
+    for (gene_id, genome), sites in gene_genome_groups.items():
         # Sort by start position
         sites.sort(key=lambda x: x['start_pos'])
         
@@ -478,13 +493,13 @@ def write_comprehensive_output(consolidated_data, output_file):
         # Use pandas for sorting and manipulation if available
         df = pd.DataFrame(consolidated_data)
         
-        # Sort by consolidated motif ID, then by line, then by gene, then by position
-        df = df.sort_values(['consolidated_motif_id', 'line', 'gene_id', 'start_pos'])
-        
+        # Sort by consolidated motif ID, then by genome, then by gene, then by position
+        df = df.sort_values(['consolidated_motif_id', 'genome', 'gene_id', 'start_pos'])
+
         # Select and order columns
         output_columns = [
-            'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus', 
-            'line', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
+            'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus',
+            'genome', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
             'relative_position', 'total_motifs_in_gene', 'relative_position_fraction', 
             'cluster_size', 'merged_count', 'length'
         ]
@@ -499,14 +514,14 @@ def write_comprehensive_output(consolidated_data, output_file):
     else:
         # Fallback to manual CSV writing without pandas
         # Sort data manually
-        consolidated_data.sort(key=lambda x: (x.get('consolidated_motif_id', ''), 
-                                            x.get('line', ''), 
-                                            x.get('gene_id', ''), 
+        consolidated_data.sort(key=lambda x: (x.get('consolidated_motif_id', ''),
+                                            x.get('genome', ''),
+                                            x.get('gene_id', ''),
                                             x.get('start_pos', 0)))
-        
+
         output_columns = [
-            'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus', 
-            'line', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
+            'consolidated_motif_id', 'original_motif_id', 'motif_consensus', 'original_streme_consensus',
+            'genome', 'gene_id', 'start_pos', 'end_pos', 'strand', 'score', 'sequence',
             'relative_position', 'total_motifs_in_gene', 'relative_position_fraction', 
             'cluster_size', 'merged_count', 'length'
         ]
@@ -546,12 +561,12 @@ def write_summary_statistics(df, summary_file):
             # Use pandas functionality
             f.write(f"Total motif sites: {len(df)}\n")
             f.write(f"Unique consolidated motifs: {df['consolidated_motif_id'].nunique()}\n")
-            f.write(f"Lines analyzed: {df['line'].nunique()}\n")
+            f.write(f"Genomes analyzed: {df['genome'].nunique()}\n")
             f.write(f"Genes with motifs: {df['gene_id'].nunique()}\n\n")
-            
-            # Per-line statistics
-            f.write("## Statistics by Line\n")
-            line_stats = df.groupby('line').agg({
+
+            # Per-genome statistics
+            f.write("## Statistics by Genome\n")
+            genome_stats = df.groupby('genome').agg({
                 'gene_id': 'nunique',
                 'consolidated_motif_id': 'nunique',
                 'sequence': 'count'
@@ -560,7 +575,7 @@ def write_summary_statistics(df, summary_file):
                 'consolidated_motif_id': 'Unique_motifs',
                 'sequence': 'Total_sites'
             })
-            f.write(line_stats.to_string())
+            f.write(genome_stats.to_string())
             f.write("\n\n")
             
             # Motif frequency
@@ -575,7 +590,7 @@ def write_summary_statistics(df, summary_file):
             
             f.write(f"Total motif sites: {len(data)}\n")
             f.write(f"Unique consolidated motifs: {len(set(row.get('consolidated_motif_id') for row in data))}\n")
-            f.write(f"Lines analyzed: {len(set(row.get('line') for row in data))}\n")
+            f.write(f"Genomes analyzed: {len(set(row.get('genome') for row in data))}\n")
             f.write(f"Genes with motifs: {len(set(row.get('gene_id') for row in data))}\n\n")
             
             # Basic motif frequency
@@ -797,33 +812,34 @@ def run_consolidation(args):
     
     # Find STREME directories with sites.tsv files
     streme_dirs = []
-    target_lines = args.lines.split(',') if args.lines else None
-    
+    target_genomes = args.genomes.split(',') if args.genomes else None
+    name_pattern = getattr(args, 'name_pattern', None)
+
     for item in results_dir.iterdir():
         if item.is_dir() and item.name.startswith('streme_'):
-            # Extract line name properly
-            line_name = extract_line_name(item.name)
-            
-            # Skip if not in target lines
-            if target_lines and line_name not in target_lines:
+            # Extract genome name properly
+            genome_name = extract_genome_name(item.name, name_pattern)
+
+            # Skip if not in target genomes
+            if target_genomes and genome_name not in target_genomes:
                 continue
-            
+
             sites_file = item / 'sites.tsv'
             if sites_file.exists():
-                streme_dirs.append((sites_file, line_name))
+                streme_dirs.append((sites_file, genome_name))
             elif args.verbose:
                 print(f"Warning: No sites.tsv found in {item}")
-    
+
     if not streme_dirs:
         print("Error: No STREME directories with sites.tsv files found")
         sys.exit(1)
-    
+
     print(f"Found {len(streme_dirs)} STREME directories to process")
-    
+
     # Parse all sites files
     all_sites = []
-    for sites_file, line_name in streme_dirs:
-        sites_data = parse_sites_file(sites_file, line_name)
+    for sites_file, genome_name in streme_dirs:
+        sites_data = parse_sites_file(sites_file, genome_name)
         all_sites.extend(sites_data)
     
     if not all_sites:
@@ -914,14 +930,14 @@ Examples:
   # With custom similarity threshold
   %(prog)s consolidate /path/to/streme/results/ --threshold 0.8 --output results/
   
-  # Process specific lines only
-  %(prog)s consolidate /path/to/streme/results/ --lines IM502,IM664 --output targeted/
+  # Process specific genomes only
+  %(prog)s consolidate /path/to/streme/results/ --genomes P_virgatus,P_barbatus --output targeted/
 
 Input Directory Structure:
   streme_results/
-  ├── streme_IM502/sites.tsv
-  ├── streme_IM664/sites.tsv
-  └── streme_IM767/sites.tsv
+  ├── streme_P_virgatus/sites.tsv
+  ├── streme_P_barbatus/sites.tsv
+  └── streme_P_strictus/sites.tsv
         """
     )
     
@@ -944,8 +960,17 @@ Input Directory Structure:
     )
     
     consolidate_parser.add_argument(
-        '--lines', '-l',
-        help='Comma-separated list of specific lines to process (e.g., IM502,IM664)'
+        '--genomes', '--lines', '-l',
+        dest='genomes',
+        help='Comma-separated list of specific genomes to process '
+             '(e.g., P_virgatus,P_barbatus). "--lines" is a deprecated alias.'
+    )
+
+    consolidate_parser.add_argument(
+        '--name-pattern',
+        dest='name_pattern',
+        help='Optional regex to extract the genome name from a STREME directory '
+             r'name (e.g. "IM\d+"). Default strips the streme_ prefix and common suffixes.'
     )
     
     consolidate_parser.add_argument(

@@ -12,6 +12,9 @@ from collections import defaultdict, Counter
 import numpy as np
 from difflib import SequenceMatcher
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import genome_terms
+
 def calculate_sequence_similarity(seq1, seq2):
     """Calculate similarity between two sequences"""
     if not seq1 or not seq2:
@@ -175,7 +178,7 @@ def process_consolidated_motifs(tsv_file, expression_file=None, top_n_motifs=Non
         with open(tsv_file, 'r') as f:
             reader = csv.DictReader(f, delimiter='\t')
             for row in reader:
-                line = row['line']
+                line = genome_terms.row_genome(row)
                 gene = row['gene_id']
                 motif_id = row['consolidated_motif_id']
                 position = int(row['start_pos'])
@@ -309,7 +312,7 @@ def process_consolidated_motifs(tsv_file, expression_file=None, top_n_motifs=Non
             with open(expression_file, 'r') as f:
                 reader = csv.DictReader(f, delimiter='\t')
                 for row in reader:
-                    line = row.get('line', row.get('Line', ''))
+                    line = genome_terms.row_genome(row)
                     gene = row.get('gene', row.get('Gene', row.get('gene_id', '')))
                     expression = float(row.get('expression', row.get('Expression', row.get('value', 0))))
                     expression_data[(line, gene)] = expression

@@ -1,13 +1,15 @@
-# STREME Parser — Motif Consolidation and Expression Analysis
+# STREME Parser — Promoter Discovery, Motif Consolidation, and Expression Analysis
 
-STREME Parser is a small toolkit and pipeline for turning STREME motif discovery outputs into consolidated, analysis-ready data. It clusters similar motifs across lines with IUPAC-aware matching, merges overlapping hits, produces a clean consolidated sites table, derives regression-ready features, and includes tools to relate motifs to gene expression across genetic lines.
+STREME Parser is a toolkit and pipeline for regulatory-element discovery across **genomes**. Starting from genome assemblies plus annotations, it extracts candidate promoters (upstream-of-TSS regions), masks them, runs STREME motif discovery, then clusters similar motifs across genomes with IUPAC-aware matching, merges overlapping hits, produces a clean consolidated sites table, derives regression-ready features, and relates motifs to gene expression.
 
-Works well for multi-line promoter scans where each line was run separately with STREME and produced `streme_*` folders containing a `sites.tsv`.
+It is genome-generic: use it for several genomes of a genus (e.g. *Penstemon virgatus*, *P. barbatus*) or for multiple ecotypes/inbred lines of one species (e.g. *Mimulus guttatus* IM lines). Provide one or many `(genome, annotation)` pairs — multiple genomes are processed in parallel; a single genome parallelises its heavy steps.
+
+> **Terminology:** the canonical term is **genome**. Earlier versions used "line"; the legacy `line`/`Line` column names and the `--reference-line` flag are still accepted everywhere, so existing Mimulus data needs no migration.
 
 
 ## Highlights
 
-- IUPAC-aware motif consolidation across lines with length penalties and overlap merging
+- IUPAC-aware motif consolidation across genomes with length penalties and overlap merging
 - True-consensus computation from observed sequences, not just STREME’s consensus pattern
 - Rich consolidated output (`consolidated_streme_sites.tsv`) with per-site fields, relative position info, and cluster metadata
 - Feature generation for ML/regression (presence, counts, positions, variation) ready to join with expression data
@@ -40,16 +42,19 @@ pip install -r requirements.txt
   - `streme-parser`: Shell wrapper for the main pipeline
   - `main.py`: Delegates to `pipelines/streme_pipeline.py`
 - `cli_tools/`
+  - `genome_prep.py`: Genome preparation — `extract-promoters` (pure Python), `mask`, `background`, `run-streme`
+  - `genome_terms.py`: Shared genome/line terminology helpers (canonical "genome", legacy "line" alias)
   - `streme_sites_consolidator.py`: Consolidate/validate/features (primary CLI)
   - `motif_to_regression_features.py`: Convert consolidated sites to features
-  - `motif_expression_analyzer.py`: Model motif→expression relationships (ABSOLUTE per-line analysis)
-  - `relative_motif_analyzer.py`: Model motif→expression relationships (RELATIVE vs IM767 baseline)
-  - `comprehensive_motif_analyzer.py`: Position + sequence variation + cross-line effects
+  - `motif_expression_analyzer.py`: Model motif→expression relationships (ABSOLUTE per-genome analysis)
+  - `relative_motif_analyzer.py`: Model motif→expression relationships (RELATIVE vs a reference genome)
+  - `comprehensive_motif_analyzer.py`: Position + sequence variation + cross-genome effects
   - `validate_consolidation.py`: Standalone validator (duplicated within consolidator CLI)
 - `pipelines/`
-  - `streme_pipeline.py`: Pipeline entry (consolidate, validate, full)
+  - `streme_pipeline.py`: Pipeline entry (prepare, consolidate, validate, analyze, full)
+  - `Pipeline_promotor_discovery.yaml`: Genome-generic configuration reference
 - `scripts/`
-  - `remote_streme_all_lines.sh`: SLURM array job to run RepeatMasker + STREME per FASTA
+  - `remote_streme_all_lines.sh`: SLURM array job — one genome per task via `prepare`
   - `consolidate_streme_results.sh`: Example shell consolidation helper
 - `docs/`: Additional documentation
   - `METHODS.md`: **Comprehensive Materials and Methods** for publication
@@ -57,45 +62,78 @@ pip install -r requirements.txt
 
 ## Inputs and expected files
 
-STREME results directory containing one subfolder per line, e.g.:
+**To start from genomes:** one or many `(genome, annotation)` pairs. Supply them on the command line (single genome) or in a tab-separated manifest:
+
+```text
+genome       fasta                          annotation                     expression
+P_virgatus   /data/Penstemon_virgatus.fa    /data/Penstemon_virgatus.gff3  /data/virgatus_expr.tsv
+P_barbatus   /data/Penstemon_barbatus.fa    /data/Penstemon_barbatus.gff3
+```
+
+Annotations may be GFF3 or GTF. The `expression` column is optional.
+
+**To start from existing STREME results:** a directory containing one subfolder per genome, e.g.:
 
 ```text
 streme_results/
-├── streme_IM502/sites.tsv
-├── streme_IM664/sites.tsv
-└── streme_IM767/sites.tsv
+├── streme_P_virgatus/sites.tsv
+├── streme_P_barbatus/sites.tsv
+└── streme_P_strictus/sites.tsv
 ```
 
 Each `sites.tsv` should include (STREME defaults) columns similar to:
 
 - `motif_ID`, `seq_ID`, `site_Start`, `site_End`, `site_Strand`, `site_Score`, `site_Sequence`
 
-Expression files (tab-separated, two formats supported):
+Genome names are derived from the `streme_<genome>` directory names; pass `--name-pattern` if your naming differs.
 
-**Long format (Gene | Line | Expression):**
+Expression files (tab-separated, two formats supported; the legacy `Line`/`line` headers are still accepted):
+
+**Long format (Gene | Genome | Expression):**
 ```text
-Gene       Line   Expression
-AT1G01010  IM502  0.37
-AT1G01010  IM664  -0.12
+Gene       Genome      Expression
+AT1G01010  P_barbatus  0.37
+AT1G01010  P_strictus  -0.12
 ...
 ```
 
-**Wide format (gene | LRTadd | IM62 | IM155 | ... | IM767):**
+**Wide format (gene | LRTadd | <genome_1> | <genome_2> | ...):**
 ```text
-gene       LRTadd  IM62   IM155   IM502   IM664   IM767
-AT1G01010  2.45    0.23   0.15    0.37   -0.12    0.00
+gene       LRTadd  P_barbatus  P_strictus  P_virgatus
+AT1G01010  2.45    0.37       -0.12        0.00
 ...
 ```
 
-The wide format is required for relative analysis (IM767 serves as baseline with expression = 0).
+For relative analysis the reference genome serves as the baseline (expression = 0). It is auto-detected from an all-zero column, or set it explicitly with `--reference-genome`.
 
+
+## Stage 0: Genome preparation (genomes → STREME results)
+
+Turn genome assemblies + annotations into `streme_<genome>/` results. Multiple genomes run in parallel (`--jobs`); each genome's heavy steps use `--threads`.
+
+```bash
+# Many genomes from a manifest
+python pipelines/streme_pipeline.py prepare \
+  --manifest genomes.tsv --jobs 4 --threads 8 \
+  --upstream 1000 --mask repeatmasker --species "Penstemon" \
+  --output prepared/
+
+# A single genome
+python pipelines/streme_pipeline.py prepare \
+  --genome P_virgatus --fasta P_virgatus.fa --annotation P_virgatus.gff3 \
+  --upstream 1000 --threads 10 --output prepared/
+```
+
+Each genome flows through: **extract promoters** (1 kb upstream of TSS, strand-aware, pure Python) → **mask** (RepeatMasker or dust) → **background** (Markov model) → **STREME**. Stop early with `--mask none`, `--no-background`, or `--no-streme` (e.g. to only extract promoters, which needs no external tools). The individual steps are also available standalone via `cli_tools/genome_prep.py extract-promoters | mask | background | run-streme`.
+
+The result is `prepared/streme_<genome>/` directories, ready for consolidation below.
 
 ## Quickstart (most direct path)
 
-1. Consolidate all lines’ STREME sites into a single table:
+1. Consolidate all genomes’ STREME sites into a single table:
 
 ```bash
-python cli_tools/streme_sites_consolidator.py consolidate /path/to/streme_results \
+python cli_tools/streme_sites_consolidator.py consolidate prepared/ \
   --output outputs/consolidated_streme_sites
 ```
 
@@ -128,9 +166,9 @@ This writes (by default):
 
 4. Analyze motif effects on expression (three options):
 
-**Option A: Absolute analysis (per-line analysis)**
+**Option A: Absolute analysis (per-genome analysis)**
 
-Analyzes each line independently. Expression data can be in long format (`Gene | Line | Expression`) or wide format (`gene | LRTadd | IM62 | IM155 | ... | IM767`).
+Analyzes each genome independently. Expression data can be in long format (`Gene | Genome | Expression`) or wide format (one column per genome).
 
 ```bash
 python cli_tools/motif_expression_analyzer.py \
@@ -139,9 +177,9 @@ python cli_tools/motif_expression_analyzer.py \
   --output outputs/absolute_analysis_results
 ```
 
-**Option B: Relative analysis (comparing to IM767 baseline)**
+**Option B: Relative analysis (comparing to a reference-genome baseline)**
 
-Generates features comparing each line to IM767 reference. Requires wide format expression data.
+Generates features comparing each genome to the reference genome. Requires wide format expression data.
 
 ```bash
 python cli_tools/relative_motif_analyzer.py \
@@ -176,26 +214,31 @@ chmod +x bin/streme-parser
 bin/streme-parser --help
 
 # Individual steps
-bin/streme-parser consolidate /path/to/streme_results --output outputs/
+bin/streme-parser prepare --manifest genomes.tsv --jobs 4 --threads 8 --output prepared/
+bin/streme-parser consolidate prepared/ --output outputs/
 bin/streme-parser validate outputs/consolidated_streme_sites.tsv
 bin/streme-parser analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --output results/
-bin/streme-parser analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --reference-line IM500 --output results/
+bin/streme-parser analyze outputs/consolidated_streme_sites.tsv expression.tsv --type relative --reference-genome P_virgatus --output results/
 
 # Full pipeline (consolidate → validate → analyze)
-bin/streme-parser full /path/to/streme_results expression.tsv --output outputs/ --analysis-type relative
-bin/streme-parser full /path/to/streme_results expression.tsv --output outputs/ --analysis-type relative --reference-line IM500
+bin/streme-parser full prepared/ expression.tsv --output outputs/ --analysis-type relative
+bin/streme-parser full prepared/ expression.tsv --output outputs/ --analysis-type relative --reference-genome P_virgatus
+
+# Full pipeline starting from genomes (runs prepare first into the given dir)
+bin/streme-parser full prepared/ expression.tsv --manifest genomes.tsv --jobs 4 --threads 8 --analysis-type relative
 ```
 
 **Pipeline commands available:**
-- `consolidate`: Consolidate STREME motifs across lines
-- `validate`: Validate motif consolidation quality  
+- `prepare`: Genomes → promoters → mask → background → STREME (parallel across genomes)
+- `consolidate`: Consolidate STREME motifs across genomes
+- `validate`: Validate motif consolidation quality
 - `analyze`: Run motif-expression analysis (absolute or relative)
-- `full`: Complete pipeline (all three steps)
+- `full`: Complete pipeline (optionally prepare first, then consolidate → validate → analyze)
 
 **Expression analysis types:**
-- `--type absolute`: Per-line analysis (each line analyzed independently)
-- `--type relative`: Comparative analysis (each line vs reference baseline) - **recommended**
-- `--reference-line`: Set reference line for relative analysis (default: IM767)
+- `--type absolute`: Per-genome analysis (each genome analyzed independently)
+- `--type relative`: Comparative analysis (each genome vs reference baseline) - **recommended**
+- `--reference-genome`: Set reference genome for relative analysis (`--reference-line` still accepted)
 
 **Direct pipeline usage:**
 ```bash
@@ -218,39 +261,39 @@ Notes:
 From consolidation (`consolidated_streme_sites.tsv`):
 
 - Columns include: `consolidated_motif_id`, `original_motif_id`, `motif_consensus`, `original_streme_consensus`,
-  `line`, `gene_id`, `start_pos`, `end_pos`, `strand`, `score`, `sequence`,
+  `genome`, `gene_id`, `start_pos`, `end_pos`, `strand`, `score`, `sequence`,
   `relative_position`, `total_motifs_in_gene`, `relative_position_fraction`, `cluster_size`, `merged_count`, `length`
-- Summary file reports counts per line and top motifs
+- Summary file reports counts per genome and top motifs
 
 From features (`*_features.csv`):
 
-- Row = one gene×line combination; columns include per-motif presence, counts, position stats, and sequence variation stats
+- Row = one gene×genome combination; columns include per-motif presence, counts, position stats, and sequence variation stats
 - Companion `*_feature_descriptions.txt` and `*_summary.txt` describe feature definitions and matrix stats
 
 From motif→expression analysis:
 
 - Cross-validated model performance across linear/regularized/tree models
 - Feature importance (per-model and aggregate heatmap)
-- Predictions and residuals per gene×line (`predictions.tsv`)
+- Predictions and residuals per gene×genome (`predictions.tsv`)
 
 From comprehensive analysis:
 
-- Layer-wise R² contributions (presence, position, variation, cross-line)
+- Layer-wise R² contributions (presence, position, variation, cross-genome)
 - Combined model performance and top features
 
 
 ## HPC workflow (SLURM example)
 
-Run STREME per FASTA via array job (example provided in `scripts/remote_streme_all_lines.sh`). Submit with:
+`scripts/remote_streme_all_lines.sh` is a SLURM array job that prepares one genome per task (extract → mask → background → STREME) from a manifest. Set the array size to the number of genome rows and submit:
 
 ```bash
-sbatch scripts/remote_streme_all_lines.sh
+sbatch --array=1-<N_genomes> scripts/remote_streme_all_lines.sh
 ```
 
-After STREME completes, consolidate:
+After all tasks complete, consolidate the `streme_<genome>/` directories:
 
 ```bash
-python cli_tools/streme_sites_consolidator.py consolidate /path/to/streme_results \
+python cli_tools/streme_sites_consolidator.py consolidate prepared/ \
   --output outputs/consolidated_streme_sites
 ```
 
@@ -291,7 +334,7 @@ The methods document includes:
 - If `pandas` isn’t available, output writing falls back to a manual TSV writer.
 - Overlap merging is enabled by default in the consolidator to reduce sliding-window artifacts.
 - For the regression analyzer, ensure your feature file delimiter matches its expectation (TSV). If you used the feature generator’s CSV output, convert to TSV (see Quickstart).
-- Expression file must have headers: `Gene`, `Line`, `Expression`.
+- Expression file (long format) must have headers: `Gene`, `Genome`, `Expression` (legacy `Line` still accepted).
 
 
 ## Citation and license
