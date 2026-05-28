@@ -1,33 +1,38 @@
 # Multi-Layer Regulatory Analysis: Position, Variation & Expression
 
-This guide shows you how to analyze **three layers of regulatory effects** simultaneously:
+This guide shows you how to analyze **three layers of regulatory effects** simultaneously. It is genome-generic: the same analysis applies to several genomes of a genus (e.g. *Penstemon virgatus*, *P. barbatus*) or to multiple ecotypes/inbred lines of one species (e.g. *Mimulus guttatus* IM lines).
+
+> **Terminology:** the canonical term is **genome**. Earlier versions used "line"; the legacy `line`/`Line` column names and the `--reference-line` flag are still accepted. The comprehensive analyzer's `cross_line` layer name is kept as a literal flag value for backward compatibility, but it measures cross-genome variation.
 
 ## 🎯 The Three Key Questions
 
 1. **Motif Presence Effects**: Does having this motif affect expression?
 2. **Position Bias Effects**: Does WHERE the motif is located matter for expression?
-3. **Sequence Variation Effects**: Does HOW the motif varies across lines affect expression?
+3. **Sequence Variation Effects**: Does HOW the motif varies across genomes affect expression?
 
 ## 🧬 Biological Hypothesis
 
-**"Gene expression differences across lines result from a combination of:**
+**"Gene expression differences across genomes result from a combination of:**
 - **Which motifs are present** (basic regulatory elements)
 - **Where motifs are positioned** (distance from TSS matters)  
 - **How motifs vary in sequence** (different variants have different strengths)"
 
 ## 📊 Complete Analysis Workflow
 
-### Step 1: Consolidate and Validate
+### Step 1: Prepare, Consolidate and Validate
 ```bash
-# Get your motif sites with exact positions and sequences
-./bin/streme-parser consolidate /path/to/streme/results/ --output analysis/
+# Prepare genomes (extract promoters → mask → background → STREME), one dir per genome
+python3 pipelines/streme_pipeline.py prepare --manifest genomes.tsv --output prepared/
+
+# Get your motif sites with exact positions and sequences, then validate
+./bin/streme-parser consolidate prepared/ --output analysis/
 ./bin/streme-parser validate analysis/consolidated_streme_sites.tsv
 ```
 
 ### Step 2: Comprehensive Multi-Layer Analysis
 ```bash
-# Analyze all three regulatory layers together
-./bin/streme-parser analyze-comprehensive \
+# Analyze all regulatory layers together (run the analyzer directly)
+python3 cli_tools/comprehensive_motif_analyzer.py \
     analysis/consolidated_streme_sites.tsv \
     expression_data.tsv \
     --output comprehensive_results/ \
@@ -39,21 +44,21 @@ This guide shows you how to analyze **three layers of regulatory effects** simul
 ### Step 3: Layer-by-Layer Comparison
 ```bash
 # Test each layer individually to see their relative contributions
-./bin/streme-parser analyze-comprehensive \
+python3 cli_tools/comprehensive_motif_analyzer.py \
     analysis/consolidated_streme_sites.tsv \
     expression_data.tsv \
     --output layer_comparison/ \
     --layers presence \
     --top-motifs 100
 
-./bin/streme-parser analyze-comprehensive \
+python3 cli_tools/comprehensive_motif_analyzer.py \
     analysis/consolidated_streme_sites.tsv \
     expression_data.tsv \
     --output layer_comparison/ \
     --layers position \
     --top-motifs 100
 
-./bin/streme-parser analyze-comprehensive \
+python3 cli_tools/comprehensive_motif_analyzer.py \
     analysis/consolidated_streme_sites.tsv \
     expression_data.tsv \
     --output layer_comparison/ \
@@ -90,13 +95,13 @@ This guide shows you how to analyze **three layers of regulatory effects** simul
 
 **Question:** "Do different sequence variants of motif X have different regulatory strengths?"
 
-### Layer 4: Cross-Line Variation
-**Features Generated:**
-- `motif_123_cross_line_diversity`: How variable is motif across all lines
-- `motif_123_line_has_unique_variant`: Does this line have a unique sequence variant
+### Layer 4: Cross-Genome Variation
+**Features Generated** (literal feature names retain the legacy `line` wording for backward compatibility, but measure cross-genome variation):
+- `motif_123_cross_line_diversity`: How variable is motif across all genomes
+- `motif_123_line_has_unique_variant`: Does this genome have a unique sequence variant
 - `motif_123_dominant_sequence_diversity`: How different are the most common variants
 
-**Question:** "Do line-specific sequence variants explain line-specific expression differences?"
+**Question:** "Do genome-specific sequence variants explain genome-specific expression differences?"
 
 ## 📈 Interpreting Results
 
@@ -107,7 +112,7 @@ This guide shows you how to analyze **three layers of regulatory effects** simul
 - **Presence**: R² = 0.15 ± 0.03 (200 features)
 - **Position**: R² = 0.35 ± 0.05 (600 features)  
 - **Variation**: R² = 0.28 ± 0.04 (800 features)
-- **Cross-line**: R² = 0.22 ± 0.03 (300 features)
+- **Cross-genome**: R² = 0.22 ± 0.03 (300 features)
 
 ## Comprehensive Model Performance
 **Combined Model**: R² = 0.67 ± 0.04
@@ -116,7 +121,7 @@ This guide shows you how to analyze **three layers of regulatory effects** simul
 - **motif_087_position_weighted_score** (Position): 0.0234
 - **motif_123_consensus_similarity_mean** (Variation): 0.0198  
 - **motif_045_proximal_density** (Position): 0.0187
-- **motif_234_line_has_unique_variant** (Cross-line): 0.0156
+- **motif_234_line_has_unique_variant** (Cross-genome): 0.0156
 ```
 
 ### Key Insights:
@@ -135,12 +140,12 @@ This guide shows you how to analyze **three layers of regulatory effects** simul
 ### High Variation Importance → "Sequence Variants Have Different Activities"  
 - Not all motif hits are equal
 - Sequence changes within motifs alter binding affinity
-- Line-specific variants may explain expression differences
+- Genome-specific variants may explain expression differences
 
-### High Cross-Line Importance → "Genetic Background Effects"
-- Same motif behaves differently in different lines
+### High Cross-Genome Importance → "Genetic Background Effects"
+- Same motif behaves differently in different genomes
 - Epistatic interactions between motifs and genetic background
-- Line-specific regulatory evolution
+- Genome-specific regulatory evolution
 
 ## 🔍 Advanced Analysis Options
 
@@ -148,13 +153,13 @@ This guide shows you how to analyze **three layers of regulatory effects** simul
 
 ```bash
 # Question: "Is position bias the main driver?"
-./bin/streme-parser analyze-comprehensive data.tsv expr.tsv --layers position
+python3 cli_tools/comprehensive_motif_analyzer.py data.tsv expr.tsv --layers position
 
-# Question: "Do sequence variants explain line differences?"  
-./bin/streme-parser analyze-comprehensive data.tsv expr.tsv --layers variation cross_line
+# Question: "Do sequence variants explain genome differences?"  
+python3 cli_tools/comprehensive_motif_analyzer.py data.tsv expr.tsv --layers variation cross_line
 
 # Question: "Are there motif-motif interactions?"
-./bin/streme-parser analyze-comprehensive data.tsv expr.tsv --interactions
+python3 cli_tools/comprehensive_motif_analyzer.py data.tsv expr.tsv --interactions
 ```
 
 ### Gene Set Specific Analysis:

@@ -7,28 +7,31 @@ STREME_parser/
 │   └── main.py                       # Python entry point
 │
 ├── 🔧 cli_tools/                     # Core analysis tools
-│   ├── motif_consolidator.py         # Consolidate motifs across lines
+│   ├── genome_prep.py                # Genome prep: extract-promoters, mask, background, run-streme
+│   ├── genome_terms.py               # Genome/line terminology helpers (canonical "genome", legacy "line")
+│   ├── motif_consolidator.py         # Consolidate motifs across genomes
 │   ├── validate_consolidation.py     # Validate motif clustering
 │   ├── motif_to_regression_features.py # Extract ML features
 │   ├── motif_expression_analyzer.py  # Basic expression analysis
-│   ├── mixed_effects_analyzer.py     # Mixed-effects analysis (RECOMMENDED)
+│   ├── mixed_effects_analyzer.py     # Mixed-effects analysis (standalone)
 │   ├── comprehensive_motif_analyzer.py # Advanced regulatory analysis
-│   └── streme_sites_consolidator.py  # Parse STREME sites.tsv files
+│   └── streme_sites_consolidator.py  # Parse/consolidate STREME sites.tsv files (consolidate/validate/features)
 │
 ├── 🚀 pipelines/                     # Main orchestration
-│   └── streme_pipeline.py            # Master pipeline script
+│   ├── streme_pipeline.py            # Master pipeline script
+│   └── Pipeline_promotor_discovery.yaml # Genome-generic configuration reference
 │
 ├── 📚 docs/                          # All documentation
 │   ├── README.md                     # Documentation index
 │   ├── GETTING_STARTED.md            # Setup and first steps
 │   ├── COMPLETE_WORKFLOW.md          # Full analysis workflow
 │   ├── COMPREHENSIVE_REGULATORY_ANALYSIS.md # Advanced analysis guide
-│   ├── STATISTICAL_MODELING_GUIDE.md # Statistical approaches explained
+│   ├── METHODS.md                    # Materials and Methods (publication-oriented)
 │   └── OUTPUT_COLUMNS_GUIDE.md       # Output format reference
 │
 ├── 📜 scripts/                       # Utility scripts
 │   ├── consolidate_streme_results.sh # Batch consolidation
-│   └── remote_streme_all_lines.sh    # Remote execution helper
+│   └── remote_streme_all_lines.sh    # Remote (SLURM array) prepare helper, one genome per task
 │
 ├── 📦 archive/                       # Alternative implementations
 │   ├── advanced_streme_consolidation.py
@@ -43,30 +46,34 @@ STREME_parser/
 ## 🎯 Key Components
 
 ### Core Tools (`cli_tools/`)
-- **motif_consolidator.py**: Groups similar motifs across genetic lines using IUPAC-aware similarity
-- **mixed_effects_analyzer.py**: Gold standard statistical analysis for regulatory genomics
+- **genome_prep.py**: From genome assemblies to STREME results — extract promoters (pure Python), mask, build background, run STREME
+- **genome_terms.py**: Shared terminology helpers accepting both canonical "genome" and legacy "line" column names
+- **motif_consolidator.py**: Groups similar motifs across genomes using IUPAC-aware similarity
+- **mixed_effects_analyzer.py**: Standalone mixed-effects statistical analysis for regulatory genomics
 - **motif_to_regression_features.py**: Feature extraction for machine learning analysis
 
 ### Pipeline (`pipelines/`)
-- **streme_pipeline.py**: Unified command-line interface orchestrating all analysis steps
+- **streme_pipeline.py**: Unified command-line interface orchestrating all analysis steps (subcommands: `prepare`, `consolidate`, `validate`, `analyze`, `gene-specific`, `full`)
+- **Pipeline_promotor_discovery.yaml**: Genome-generic configuration reference for the promoter-discovery workflow
 
 ### Documentation (`docs/`)
 - Comprehensive guides for setup, usage, and interpretation
-- Statistical modeling explanations and best practices
+- Publication-oriented Materials and Methods (`METHODS.md`)
 - Output format specifications
 
 ### Entry Points (`bin/`)
-- **streme-parser**: Main executable providing unified CLI access to all tools
+- **streme-parser**: Main executable forwarding to `pipelines/streme_pipeline.py`
 - **main.py**: Python entry point for programmatic access
 
 ## 🔄 Analysis Workflow
 
 ```mermaid
 graph LR
-    A[STREME Results] --> B[consolidate]
+    A[Genomes + Annotations] --> P[prepare: promoters → mask → background → STREME]
+    P --> B[consolidate]
     B --> C[validate]
-    C --> D[extract-features]
-    D --> E[analyze-mixed]
+    C --> D[features]
+    D --> E[analyze]
     E --> F[Results & Plots]
 ```
 
@@ -88,18 +95,21 @@ The pipeline implements multiple statistical modeling approaches:
    - Shared effects for similar gene classes
    - Balance between power and specificity
 
-See `docs/STATISTICAL_MODELING_GUIDE.md` for detailed explanations.
+See `docs/METHODS.md` for the detailed statistical methodology.
 
 ## 🚀 Quick Start
 
 ```bash
-# Complete analysis pipeline
-./bin/streme-parser full --input-dir streme_results/ --fasta sequences.fa --expression expr.tsv
+# Complete pipeline, preparing genomes first from a manifest
+./bin/streme-parser full prepared/ expression.tsv \
+    --manifest genomes.tsv --jobs 4 --threads 8 \
+    --analysis-type relative --reference-genome IM767
 
 # Individual steps
-./bin/streme-parser consolidate streme_results/
-./bin/streme-parser extract-features motifs.tsv sequences.fa --simple
-./bin/streme-parser analyze-mixed features.tsv expression.tsv
+python3 pipelines/streme_pipeline.py prepare --manifest genomes.tsv --output prepared/
+./bin/streme-parser consolidate prepared/
+python3 cli_tools/streme_sites_consolidator.py features consolidated_streme_sites.tsv --simple
+./bin/streme-parser analyze consolidated_streme_sites.tsv expression.tsv --type relative
 ```
 
 For detailed usage, see `docs/GETTING_STARTED.md`.

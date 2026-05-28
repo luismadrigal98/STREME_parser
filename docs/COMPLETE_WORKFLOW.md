@@ -1,56 +1,70 @@
 # Complete Motif-Expression Analysis Workflow
 
-This guide shows you exactly how to use your STREME parser to analyze motif effects on gene expression.
+This guide shows you exactly how to use your STREME parser to analyze motif effects on gene expression. It is genome-generic: the same workflow applies to several genomes of a genus (e.g. *Penstemon virgatus*, *P. barbatus*) or to multiple ecotypes/inbred lines of one species (e.g. *Mimulus guttatus* IM lines).
+
+> **Terminology:** the canonical term is **genome**. Earlier versions used "line"; the legacy `line`/`Line` column names and the `--reference-line` flag are still accepted, so existing Mimulus data needs no migration.
 
 ## 📊 The Analysis Question
 
-**"Which regulatory motifs in gene promoters explain expression differences across genetic lines?"**
+**"Which regulatory motifs in gene promoters explain expression differences across genomes?"**
 
 ## 🔄 Complete Workflow
 
-### Step 1: Consolidate STREME Results
+### Step 1: Prepare Genomes (Promoters → STREME)
+```bash
+# From genome assemblies + annotations to STREME results, one dir per genome.
+# Per genome: extract promoters (1 kb upstream of TSS) → mask → background → STREME.
+python3 pipelines/streme_pipeline.py prepare \
+    --manifest genomes.tsv --jobs 4 --threads 8 --upstream 1000 --output prepared/
+```
+**Output:** one `prepared/streme_<genome>/` directory per genome (e.g. `prepared/streme_P_virgatus/`).
+
+### Step 2: Consolidate STREME Results
 ```bash
 # Consolidate motifs from all your STREME runs
-./bin/streme-parser consolidate /path/to/streme/results/ --output analysis/
+./bin/streme-parser consolidate prepared/ --output analysis/
 ```
 **Output:** `analysis/consolidated_streme_sites.tsv`
 
-### Step 2: Extract Binary Motif Features
+### Step 3: Extract Binary Motif Features
 ```bash
-# Create binary presence/absence features for each gene-line combination
-./bin/streme-parser extract-features analysis/consolidated_streme_sites.tsv \
+# Create binary presence/absence features for each gene-genome combination
+python3 cli_tools/streme_sites_consolidator.py features \
+    analysis/consolidated_streme_sites.tsv \
     --simple \
     --output-prefix analysis/motif_features
 ```
 **Output:** `analysis/motif_features_matrix.tsv`
 
-### Step 3: Prepare Your Expression Data
+### Step 4: Prepare Your Expression Data
 
-Create a file called `expression_data.tsv` with this format:
+Create a file called `expression_data.tsv` with this format (the `Genome` column accepts the legacy `Line` name as an alias):
 ```
-Gene	Line	Expression
-AT1G01010	IM502	2.3
-AT1G01010	IM664	-1.2
-AT1G01010	IM1034	0.8
-AT1G01020	IM502	-0.5
+Gene	Genome	Expression
+AT1G01010	P_virgatus	2.3
+AT1G01010	P_barbatus	-1.2
+AT1G01010	IM767	0.8
+AT1G01020	P_virgatus	-0.5
 ...
 ```
 
 **Key points:**
-- Expression = log2(fold change) relative to IM767
-- IM767 entries are not needed (they're always 0)
+- Expression = log2(fold change) relative to the reference genome (default: IM767)
+- Reference-genome entries are not needed (they're always 0)
 - Gene names must match those in your STREME analysis
 
-### Step 4: Run Motif-Expression Analysis
+### Step 5: Run Motif-Expression Analysis
 ```bash
-# Analyze which motifs predict expression differences
-./bin/streme-parser analyze-expression \
-    analysis/motif_features_matrix.tsv \
+# Analyze which motifs predict expression differences.
+# Use --type absolute|relative and --reference-genome (alias --reference-line).
+./bin/streme-parser analyze \
+    analysis/consolidated_streme_sites.tsv \
     expression_data.tsv \
+    --type relative --reference-genome IM767 \
     --output analysis/regression_results/
 ```
 
-### Step 5: Interpret Results
+### Step 6: Interpret Results
 
 The analysis creates:
 - **`analysis_report.md`** - Main findings and interpretation
@@ -105,29 +119,29 @@ grep "stress\|heat\|cold" gene_list.txt > stress_genes.txt
 ### Use Detailed Motif Features
 ```bash
 # Include position, count, and sequence features (not just presence/absence)
-./bin/streme-parser extract-features analysis/consolidated_streme_sites.tsv \
+python3 cli_tools/streme_sites_consolidator.py features \
+    analysis/consolidated_streme_sites.tsv \
     --output-prefix analysis/detailed_features
 
-./bin/streme-parser analyze-expression \
-    analysis/detailed_features_matrix.tsv \
+./bin/streme-parser analyze \
+    analysis/consolidated_streme_sites.tsv \
     expression_data.tsv \
-    --detailed \
+    --type relative \
     --output analysis/detailed_results/
 ```
 
 ### Filter to Most Variable Motifs
 ```bash
-# Focus on top 100 most variable motifs
-./bin/streme-parser analyze-expression \
-    analysis/motif_features_matrix.tsv \
-    expression_data.tsv \
+# Focus on top 100 most variable motifs (feature extraction step)
+python3 cli_tools/streme_sites_consolidator.py features \
+    analysis/consolidated_streme_sites.tsv \
     --top-motifs 100 \
-    --output analysis/top100_results/
+    --output-prefix analysis/top100_features
 ```
 
 ## 📝 What to Report to Your Advisor
 
-1. **"We identified X motifs that explain Y% of expression variance across lines"**
+1. **"We identified X motifs that explain Y% of expression variance across genomes"**
 2. **"The top 10 predictive motifs are: [list with sequences]"**
 3. **"These motifs match known binding sites for: [TF families]"**
 4. **"Genes with strong motif-expression relationships include: [examples]"**
@@ -145,15 +159,15 @@ grep "stress\|heat\|cold" gene_list.txt > stress_genes.txt
 
 ### "No overlapping data found"
 - Check gene name formats match between motif and expression files
-- Ensure line names are consistent (IM502 vs IM_502)
+- Ensure genome names are consistent (P_virgatus vs P-virgatus)
 
 ### "Low R² values"
-- Try `--detailed` mode for richer features
+- Try detailed features (omit `--simple`) for richer inputs
 - Check if you have enough genes with variable expression
 - Consider using `--top-motifs` to focus on most relevant motifs
 
 ### "Models failing"
 - Check for missing values in expression data
-- Ensure sufficient sample size (>100 gene-line combinations recommended)
+- Ensure sufficient sample size (>100 gene-genome combinations recommended)
 
 **This workflow transforms your STREME results into actionable regulatory insights! 🧬→📊**

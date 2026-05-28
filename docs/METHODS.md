@@ -1,12 +1,25 @@
 # Materials and Methods
 
+The pipeline is genome-generic and operates on any set of genome assemblies with accompanying annotations. It has been applied both to multiple genomes of a genus (e.g. *Penstemon virgatus*, *P. barbatus*, *P. strictus*) and to multiple ecotypes/inbred lines of a single species (e.g. *Mimulus guttatus* IM lines). Throughout, the canonical unit of comparison is referred to as a "genome"; earlier versions of the toolkit used the term "line", which is retained as an accepted alias in column names and command-line flags so that legacy datasets require no migration.
+
+## Promoter Extraction and Genome Preparation
+
+### Promoter Sequence Extraction
+For each genome, candidate promoter regions were extracted directly from the assembly using the gene annotation. By default, the 1 kb region immediately upstream of each gene's transcription start site (TSS) was retrieved. Extraction is strand-aware: for genes on the plus strand the window spans the bases 5' of the annotated start coordinate, whereas for genes on the minus strand the window is taken downstream of the end coordinate and reverse-complemented, so that all extracted sequences are oriented 5'→3' relative to the gene. Windows were clipped at contig boundaries to avoid running past the ends of scaffolds. The upstream window length (and an optional downstream extension past the TSS) is configurable, as is the annotation feature type used to define gene starts (gene by default). Optionally, promoter windows can be truncated short of the nearest adjacent gene to avoid overlap with neighbouring loci. Promoter extraction is implemented in pure Python and requires no external tools.
+
+### Repeat Masking and Background Modelling
+Extracted promoter sequences were optionally masked for repetitive and low-complexity content using either RepeatMasker or the dust algorithm, and a Markov background model (first order by default) was estimated from the masked sequences for use by STREME. These steps detect the required external tool at run time and report a clear error if it is unavailable.
+
+### Genome-Parallel Preparation
+The promoter extraction, masking, background-modelling, and STREME steps are orchestrated per genome by a single preparation command. Multiple genomes can be supplied through a manifest and processed in parallel, while the computationally intensive per-genome steps (masking and motif discovery) can themselves be multithreaded. The result is one STREME output directory per genome, which serves as the input to the consolidation stage described below.
+
 ## Motif Discovery and Consolidation
 
 ### STREME Motif Discovery
-Motif discovery was performed using STREME (STochastic Regular Expression Motif Elicitation) version 5.4.1 from the MEME Suite (Bailey et al., 2015; Bailey, 2021). STREME was run independently on promoter sequences for each genetic line using default parameters with the following settings: minimum motif width of 6 bp, maximum motif width of 15 bp, and a maximum of 20 motifs per analysis. The algorithm was configured to identify both palindromic and non-palindromic motifs using a first-order Markov model for background sequence generation.
+Motif discovery was performed using STREME (STochastic Regular Expression Motif Elicitation) version 5.4.1 from the MEME Suite (Bailey et al., 2015; Bailey, 2021). STREME was run independently on the promoter sequences of each genome using default parameters with the following settings: minimum motif width of 6 bp, maximum motif width of 15 bp, and a maximum of 20 motifs per analysis. The algorithm was configured to identify both palindromic and non-palindromic motifs using a first-order Markov model for background sequence generation.
 
-### Motif Consolidation Across Genetic Lines
-To address the challenge of comparing motifs discovered independently across multiple genetic lines, we implemented a comprehensive motif consolidation pipeline that accounts for the biological variability in motif instances while maintaining statistical rigor.
+### Motif Consolidation Across Genomes
+To address the challenge of comparing motifs discovered independently across multiple genomes, we implemented a comprehensive motif consolidation pipeline that accounts for the biological variability in motif instances while maintaining statistical rigor.
 
 #### IUPAC-Aware Sequence Similarity Calculation
 Motif similarity was calculated using IUPAC (International Union of Pure and Applied Chemistry) nucleotide ambiguity codes to properly handle degenerate positions. For each pair of motifs, we computed alignment scores using the following approach:
@@ -42,7 +55,7 @@ Within each gene promoter, overlapping motif sites were resolved using a priorit
 ## Expression Data Processing and Analysis
 
 ### Data Preprocessing
-Gene expression data were processed to support both long format (Gene | Line | Expression) and wide format (gene | LRTadd | IM62 | IM155 | ... | IM767) inputs. For relative analysis, expression values represent log2 fold-changes relative to the designated reference line (default: IM767), ensuring that the reference line has expression values of zero across all genes.
+Gene expression data were processed to support both long format (Gene | Genome | Expression; the legacy `Line` column is accepted as an alias) and wide format (gene | LRTadd | one column per genome) inputs. For relative analysis, expression values represent log2 fold-changes relative to the designated reference genome (default: IM767, configurable via `--reference-genome`, with `--reference-line` retained as an alias), ensuring that the reference genome has expression values of zero across all genes.
 
 ### Feature Engineering
 We developed a comprehensive feature engineering pipeline that captures multiple dimensions of regulatory variation:
@@ -89,7 +102,7 @@ Model performance was evaluated using multiple complementary metrics:
 ### Absolute vs. Relative Analysis Frameworks
 
 #### Absolute Analysis
-The absolute analysis framework models expression as a direct function of motif features within each genetic line:
+The absolute analysis framework models expression as a direct function of motif features within each genome:
 
 ```
 Expression_ij = β₀ + Σₖ(βₖ × Motif_Feature_ijk) + εᵢⱼ
@@ -97,14 +110,14 @@ Expression_ij = β₀ + Σₖ(βₖ × Motif_Feature_ijk) + εᵢⱼ
 
 Where:
 - i = gene index
-- j = genetic line index  
+- j = genome index  
 - k = motif feature index
 - ε = residual error term
 
 This approach is based on classical cis-regulatory theory where transcription factor binding sites additively contribute to gene expression (Bintu et al., 2005; Segal et al., 2008).
 
 #### Relative Analysis (Novel Approach)
-The relative analysis framework directly models expression differences as a function of regulatory feature differences from a reference line:
+The relative analysis framework directly models expression differences as a function of regulatory feature differences from a reference genome:
 
 ```
 ΔExpression_ij = β₀ + Σₖ(βₖ × ΔMotif_Feature_ijk) + εᵢⱼ
@@ -114,9 +127,9 @@ Where:
 - ΔExpression_ij = Expression_ij - Expression_i,reference
 - ΔMotif_Feature_ijk = Motif_Feature_ijk - Motif_Feature_i,reference,k
 
-**Theoretical Justification**: This approach is grounded in evolutionary biology and comparative genomics, where regulatory evolution is understood through changes relative to ancestral states (Wittkopp & Kalay, 2012). By using an isogenic reference line, we control for:
+**Theoretical Justification**: This approach is grounded in evolutionary biology and comparative genomics, where regulatory evolution is understood through changes relative to ancestral states (Wittkopp & Kalay, 2012). By using a common reference genome (e.g. an isogenic reference line in single-species designs), we control for:
 - Genetic background effects
-- Trans-acting factors common across lines
+- Trans-acting factors common across genomes
 - Technical batch effects in expression measurement
 - Baseline chromatin accessibility differences
 
@@ -160,6 +173,9 @@ The analysis pipeline was implemented in Python 3.8+ using the following package
 - **scikit-learn** (1.0+): Machine learning algorithms
 - **matplotlib/seaborn**: Data visualization
 - **MEME Suite** (5.4.1): Motif discovery (Bailey et al., 2015)
+- **RepeatMasker** or **dust** (optional): Repeat/low-complexity masking of promoters
+
+Promoter extraction from genome assemblies is implemented in pure Python (`cli_tools/genome_prep.py`) and requires no external dependencies. Masking, background modelling, and STREME are invoked through the same module, which detects the relevant external tool at run time.
 
 ### Computational Resources and Scalability
 The pipeline is designed for computational efficiency:
@@ -176,7 +192,7 @@ All analyses include:
 ## Statistical Assumptions and Limitations
 
 ### Assumptions
-1. **Independence**: Gene expression values are independent after accounting for genetic line
+1. **Independence**: Gene expression values are independent after accounting for genome
 2. **Linearity**: Motif effects are approximately additive (relaxed in tree-based models)
 3. **Stationarity**: Regulatory relationships are consistent across the analyzed conditions
 4. **Completeness**: Analyzed motifs capture major regulatory variation

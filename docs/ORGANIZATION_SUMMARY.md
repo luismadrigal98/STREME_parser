@@ -24,10 +24,15 @@
 - Removed scattered documentation files from root
 
 ### 5. **Enhanced Documentation** ✅
-- Created comprehensive documentation index in `docs/README.md`
+- Maintained documentation index in the root `README.md`
 - Added `docs/PROJECT_STRUCTURE.md` for detailed project overview
-- Maintained `docs/STATISTICAL_MODELING_GUIDE.md` for statistical approaches
+- Maintained `docs/METHODS.md` for the publication-oriented statistical methodology
 - All guides properly cross-referenced and organized
+
+### 6. **Generalized to Any Genome** ✅
+- Added `cli_tools/genome_prep.py` and the pipeline `prepare` command to go from genome assemblies to STREME results (extract promoters → mask → background → STREME), processing multiple genomes in parallel
+- Added `cli_tools/genome_terms.py` so the canonical term "genome" and the legacy "line" alias are both accepted
+- Added `pipelines/Pipeline_promotor_discovery.yaml` as a genome-generic configuration reference
 
 ## 🎯 **Current Project Structure**
 
@@ -38,23 +43,25 @@ STREME_parser/
 │   └── main.py                       # Python entry point
 │
 ├── 🔧 cli_tools/                     # Core analysis tools
-│   ├── motif_consolidator.py         # Consolidate motifs across lines
+│   ├── genome_prep.py                # Genome prep: extract-promoters, mask, background, run-streme
+│   ├── genome_terms.py               # Genome/line terminology helpers (canonical "genome", legacy "line")
+│   ├── motif_consolidator.py         # Consolidate motifs across genomes
 │   ├── validate_consolidation.py     # Validate motif clustering
 │   ├── motif_to_regression_features.py # Extract ML features
 │   ├── motif_expression_analyzer.py  # Basic expression analysis
-│   ├── mixed_effects_analyzer.py     # Mixed-effects analysis (GOLD STANDARD)
+│   ├── mixed_effects_analyzer.py     # Mixed-effects analysis (standalone)
 │   ├── comprehensive_motif_analyzer.py # Advanced regulatory analysis
-│   └── streme_sites_consolidator.py  # Parse STREME sites.tsv files
+│   └── streme_sites_consolidator.py  # Parse/consolidate STREME sites.tsv files (consolidate/validate/features)
 │
 ├── 🚀 pipelines/                     # Main orchestration
-│   └── streme_pipeline.py            # Master pipeline script
+│   ├── streme_pipeline.py            # Master pipeline script
+│   └── Pipeline_promotor_discovery.yaml # Genome-generic configuration reference
 │
 ├── 📚 docs/                          # All documentation
-│   ├── README.md                     # Documentation index
 │   ├── GETTING_STARTED.md            # Setup and first steps
 │   ├── COMPLETE_WORKFLOW.md          # Full analysis workflow
 │   ├── COMPREHENSIVE_REGULATORY_ANALYSIS.md # Advanced analysis guide
-│   ├── STATISTICAL_MODELING_GUIDE.md # Statistical approaches explained
+│   ├── METHODS.md                    # Materials and Methods (publication-oriented)
 │   ├── PROJECT_STRUCTURE.md          # Project organization details
 │   └── OUTPUT_COLUMNS_GUIDE.md       # Output format reference
 │
@@ -69,12 +76,14 @@ STREME_parser/
 
 All accessible via `./bin/streme-parser <command>`:
 
-- **`consolidate`** - Consolidate STREME motifs across genetic lines
+- **`prepare`** - Prepare genome(s): extract promoters → mask → background → STREME
+- **`consolidate`** - Consolidate STREME motifs across genomes
 - **`validate`** - Validate motif consolidation quality  
-- **`extract-features`** - Extract ML features from consolidated motifs
-- **`analyze-mixed`** - Mixed-effects analysis (RECOMMENDED approach)
-- **`analyze-comprehensive`** - Advanced regulatory analysis
+- **`analyze`** - Run motif-expression analysis (`--type absolute|relative`, `--reference-genome`)
+- **`gene-specific`** - Run gene-specific motif analysis
 - **`full`** - Complete pipeline workflow
+
+Feature extraction is provided by the consolidator CLI: `python3 cli_tools/streme_sites_consolidator.py features ...`. Comprehensive multi-layer analysis is run directly via `python3 cli_tools/comprehensive_motif_analyzer.py ...`.
 
 ## 📊 **Statistical Approaches Implemented**
 
@@ -99,7 +108,7 @@ The project is now clean, well-organized, and ready for testing in your work env
 2. **Make executable**: `chmod +x bin/streme-parser`  
 3. **Start with**: `./bin/streme-parser --help`
 4. **Read guides**: Check `docs/GETTING_STARTED.md`
-5. **Run analysis**: Use `analyze-mixed` for best statistical results
+5. **Run analysis**: Use `prepare` to build STREME inputs from genomes, then `consolidate` and `analyze`
 
 ---
 
