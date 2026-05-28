@@ -130,6 +130,28 @@ def reverse_complement(seq):
     return seq.translate(_COMPLEMENT)[::-1]
 
 
+def resolve_contig_filter(chromosomes):
+    """
+    Normalise a chromosome/contig allowlist into a set of names (or None).
+
+    Accepts: None/empty (-> None, keep all), an iterable of names, a path to a
+    file with one name per line, or a comma-separated string. Genome assemblies
+    name chromosomes differently (PeChr1, Chr1, chr01, scaffolds like
+    JBCEGF010000009.1), so the list is matched literally against the annotation
+    seqids / FASTA names — pair it with a regex via contig_pattern when handy.
+    """
+    if not chromosomes:
+        return None
+    if isinstance(chromosomes, (set, list, tuple)):
+        return {str(c).strip() for c in chromosomes if str(c).strip()}
+    text = str(chromosomes)
+    path = Path(text)
+    if path.exists() and path.is_file():
+        with open(path) as fh:
+            return {ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")}
+    return {c.strip() for c in text.split(",") if c.strip()}
+
+
 # --------------------------------------------------------------------------- #
 # Annotation parsing (GFF3 / GTF)
 # --------------------------------------------------------------------------- #
@@ -275,11 +297,15 @@ def _build_neighbor_bounds(features):
 def extract_promoters(genome_fasta, annotation, output_fasta,
                       upstream=1000, downstream=0, feature_type="gene",
                       avoid_overlap=False, min_length=1, genome_name=None,
+                      chromosomes=None, contig_pattern=None,
                       line_width=70, verbose=True):
     """
     Extract upstream-of-TSS promoter sequences to a FASTA file.
 
-    Returns a summary dict with counts.
+    Restrict to particular sequences with `chromosomes` (an allowlist; see
+    resolve_contig_filter) and/or `contig_pattern` (a regex matched against the
+    sequence name). A feature is kept only if it passes both filters. Returns a
+    summary dict with counts.
     """
     if verbose:
         print(f"[extract-promoters] genome={genome_fasta}")
@@ -290,6 +316,30 @@ def extract_promoters(genome_fasta, annotation, output_fasta,
     features = parse_annotation(annotation, feature_type)
     if verbose:
         print(f"[extract-promoters] {len(features)} '{feature_type}' features parsed")
+
+    # Restrict to selected chromosomes / contigs.
+    allowed = resolve_contig_filter(chromosomes)
+    pattern = re.compile(contig_pattern) if contig_pattern else None
+    if allowed is not None or pattern is not None:
+        def _keep(contig):
+            if allowed is not None and contig not in allowed:
+                return False
+            if pattern is not None and not pattern.search(contig):
+                return False
+            return True
+        all_contigs = sorted({f["contig"] for f in features})
+        before = len(features)
+        features = [f for f in features if _keep(f["contig"])]
+        if verbose:
+            kept = sorted({f["contig"] for f in features})
+            shown = ", ".join(kept[:20]) + (" ..." if len(kept) > 20 else "")
+            print(f"[extract-promoters] contig filter kept {len(features)}/{before} "
+                  f"features on {len(kept)} sequence(s): {shown}")
+        if not features:
+            sample = ", ".join(all_contigs[:20]) + (" ..." if len(all_contigs) > 20 else "")
+            print("[extract-promoters] WARNING: contig filter removed ALL features — "
+                  "check --chromosomes/--contig-pattern against the annotation seqids "
+                  f"(present: {sample}) and the FASTA sequence names.")
 
     left_bound = right_bound = None
     if avoid_overlap:
@@ -460,6 +510,12 @@ def build_parser():
     p.add_argument("--min-length", type=int, default=1,
                    help="Drop promoters shorter than this (default: 1)")
     p.add_argument("--genome-name", help="Genome label to embed in FASTA headers")
+    p.add_argument("--chromosomes",
+                   help="Restrict to these sequences: comma-separated names "
+                        "(e.g. PeChr1,PeChr2,...) or a file with one name per line")
+    p.add_argument("--contig-pattern",
+                   help=r"Restrict to sequences whose name matches this regex "
+                        r"(e.g. '^PeChr' to keep chromosomes, drop scaffolds)")
 
     p = sub.add_parser("mask", help="Repeat/low-complexity masking")
     p.add_argument("input_fasta")
@@ -500,6 +556,7 @@ def main(argv=None):
             upstream=args.upstream, downstream=args.downstream,
             feature_type=args.feature_type, avoid_overlap=args.avoid_overlap,
             min_length=args.min_length, genome_name=args.genome_name,
+            chromosomes=args.chromosomes, contig_pattern=args.contig_pattern,
         )
     elif args.command == "mask":
         mask_sequences(args.input_fasta, output=args.output, masker=args.masker,

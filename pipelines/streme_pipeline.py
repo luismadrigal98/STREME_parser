@@ -28,8 +28,14 @@ def read_genome_manifest(manifest_path):
     Parse a tab-separated manifest of genome/annotation pairs.
 
     Required columns: genome, fasta, annotation
-    Optional column:  expression
+    Optional columns: expression, chromosomes, contig_pattern
+    (chromosomes / contig_pattern give per-genome control over which sequences
+    are used, overriding the run-wide --chromosomes / --contig-pattern flags.)
     """
+    def opt(row, cols, name):
+        return (row[cols[name]].strip()
+                if name in cols and row.get(cols[name]) else None)
+
     specs = []
     with open(manifest_path, newline="") as fh:
         reader = csv.DictReader(fh, delimiter="\t")
@@ -47,8 +53,9 @@ def read_genome_manifest(manifest_path):
                 "genome": row[cols["genome"]].strip(),
                 "fasta": row[cols["fasta"]].strip(),
                 "annotation": row[cols["annotation"]].strip(),
-                "expression": (row[cols["expression"]].strip()
-                               if "expression" in cols and row.get(cols["expression"]) else None),
+                "expression": opt(row, cols, "expression"),
+                "chromosomes": opt(row, cols, "chromosomes"),
+                "contig_pattern": opt(row, cols, "contig_pattern"),
             })
     if not specs:
         raise ValueError(f"No genome rows found in manifest {manifest_path}")
@@ -75,12 +82,17 @@ def prepare_one_genome(spec, opts):
 
     result = {"genome": genome, "status": "ok", "steps": {}, "error": None}
     try:
+        # Per-genome chromosome filters override the run-wide defaults.
+        chromosomes = spec.get("chromosomes") or opts["chromosomes"]
+        contig_pattern = spec.get("contig_pattern") or opts["contig_pattern"]
+
         promoters = work_dir / f"{genome}_promoters.fasta"
         genome_prep.extract_promoters(
             spec["fasta"], spec["annotation"], str(promoters),
             upstream=opts["upstream"], downstream=opts["downstream"],
             feature_type=opts["feature_type"], avoid_overlap=opts["avoid_overlap"],
-            min_length=opts["min_length"], genome_name=genome, verbose=True,
+            min_length=opts["min_length"], genome_name=genome,
+            chromosomes=chromosomes, contig_pattern=contig_pattern, verbose=True,
         )
         result["steps"]["promoters"] = str(promoters)
         streme_input = promoters
@@ -127,6 +139,7 @@ def run_prepare(args):
         specs = [{
             "genome": args.genome, "fasta": args.fasta,
             "annotation": args.annotation, "expression": args.expression,
+            "chromosomes": None, "contig_pattern": None,
         }]
 
     opts = {
@@ -134,6 +147,7 @@ def run_prepare(args):
         "upstream": args.upstream, "downstream": args.downstream,
         "feature_type": args.feature_type, "avoid_overlap": args.avoid_overlap,
         "min_length": args.min_length,
+        "chromosomes": args.chromosomes, "contig_pattern": args.contig_pattern,
         "mask": args.mask, "species": args.species,
         "background": not args.no_background, "background_order": args.background_order,
         "run_streme": not args.no_streme,
@@ -270,6 +284,13 @@ Manifest format (tab-separated, header required):
                                 help='Clip promoter windows short of adjacent genes')
     prepare_parser.add_argument('--min-length', type=int, default=1,
                                 help='Drop promoters shorter than this (default: 1)')
+    prepare_parser.add_argument('--chromosomes',
+                                help='Restrict to these sequences: comma-separated names '
+                                     '(e.g. PeChr1,PeChr2,...) or a file with one name per line. '
+                                     'Per-genome overrides may be set in the manifest.')
+    prepare_parser.add_argument('--contig-pattern',
+                                help=r"Restrict to sequences whose name matches this regex "
+                                     r"(e.g. '^PeChr' to keep chromosomes, drop scaffolds)")
     # Masking / background / STREME
     prepare_parser.add_argument('--mask', choices=['none', 'repeatmasker', 'dust'],
                                 default='repeatmasker', help='Masking step (default: repeatmasker)')
@@ -358,6 +379,11 @@ Manifest format (tab-separated, header required):
     full_parser.add_argument('--mask', choices=['none', 'repeatmasker', 'dust'], default='repeatmasker',
                             help='Masking step when --manifest is used (default: repeatmasker)')
     full_parser.add_argument('--species', help='Species for RepeatMasker when --manifest is used')
+    full_parser.add_argument('--chromosomes',
+                            help='Restrict promoters to these sequences when --manifest is used '
+                                 '(comma-separated names or a file; per-genome overrides via manifest)')
+    full_parser.add_argument('--contig-pattern',
+                            help='Restrict promoters to sequences matching this regex when --manifest is used')
     
     args = parser.parse_args()
     
@@ -444,7 +470,9 @@ Manifest format (tab-separated, header required):
                 manifest=args.manifest, genome=None, fasta=None, annotation=None,
                 expression=None, output=args.streme_dir, jobs=args.jobs, threads=args.threads,
                 upstream=args.upstream, downstream=0, feature_type='gene',
-                avoid_overlap=False, min_length=1, mask=args.mask, species=args.species,
+                avoid_overlap=False, min_length=1,
+                chromosomes=args.chromosomes, contig_pattern=args.contig_pattern,
+                mask=args.mask, species=args.species,
                 no_background=False, background_order=1, no_streme=False,
                 nmotifs=200, minw=6, maxw=20, thresh=0.05,
             )
