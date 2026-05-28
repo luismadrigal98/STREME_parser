@@ -74,7 +74,7 @@ python3 cli_tools/genome_prep.py extract-promoters genome.fa annot.gff3 \
 # Plus: mask, background, run-streme subcommands
 ```
 
-The `mask`, `background`, and `run-streme` steps auto-detect the external tool they need and error clearly if it is missing.
+The `mask`, `background`, and `run-streme` steps auto-detect the external tool they need on `PATH` and error clearly if it is missing. If a tool lives at a module path instead (common on HPC), point at it with `--masker-path` (RepeatMasker/dust), `--fasta-get-markov-path`, or `--streme-path` — available on `prepare`, `full`, and the standalone subcommands.
 
 ### `consolidate` - Consolidate STREME Sites
 

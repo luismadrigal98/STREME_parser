@@ -126,6 +126,8 @@ python pipelines/streme_pipeline.py prepare \
 
 Each genome flows through: **extract promoters** (1 kb upstream of TSS, strand-aware, pure Python) → **mask** (RepeatMasker or dust) → **background** (Markov model) → **STREME**. Stop early with `--mask none`, `--no-background`, or `--no-streme` (e.g. to only extract promoters, which needs no external tools). The individual steps are also available standalone via `cli_tools/genome_prep.py extract-promoters | mask | background | run-streme`.
 
+The external tools are looked up on `PATH` by default. If they live at a module path (common on HPC), point at them explicitly with `--masker-path` (RepeatMasker/dust), `--fasta-get-markov-path`, and `--streme-path` — accepted on `prepare`, `full`, and the standalone `genome_prep.py` subcommands. A missing/unrunnable executable fails with a clear message.
+
 **Restricting to chromosomes:** assemblies often mix assembled chromosomes with scaffolds, under varying names (`PeChr1…`, `Chr1`, `chr01`, scaffolds like `JBCEGF010000009.1`). Limit extraction to the sequences you want with either `--chromosomes` (an explicit allowlist — a comma list or a file with one name per line) or `--contig-pattern` (a regex); a feature is kept only if it passes both. Because naming differs per genome, these can also be set **per genome** in the manifest via `chromosomes` / `contig_pattern` columns, which override the run-wide flags for that row.
 
 ```bash

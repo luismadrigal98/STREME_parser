@@ -411,12 +411,30 @@ def extract_promoters(genome_fasta, annotation, output_fasta,
 # External-tool wrappers (mask / background / run-streme)
 # --------------------------------------------------------------------------- #
 
-def _require_tool(tool):
+def _require_tool(tool, executable=None):
+    """
+    Resolve a tool to a runnable path.
+
+    If `executable` is given (an absolute/relative path or a command name) it is
+    used instead of `tool`, so the caller can point at a module-provided binary
+    that is not on PATH. Otherwise `tool` is looked up on PATH.
+    """
+    if executable:
+        path = shutil.which(executable)
+        if path is None and os.path.isfile(executable):
+            path = executable  # accept an explicit file path even if not +x-flagged
+        if path is None:
+            raise FileNotFoundError(
+                f"Specified executable for '{tool}' was not found or is not "
+                f"runnable: {executable}"
+            )
+        return path
     path = shutil.which(tool)
     if path is None:
         raise FileNotFoundError(
             f"Required tool '{tool}' was not found on PATH. Install it (e.g. via "
-            f"the MEME Suite / RepeatMasker / your HPC module) and try again."
+            f"the MEME Suite / RepeatMasker / your HPC module), or point at it "
+            f"explicitly with the corresponding --*-path option."
         )
     return path
 
@@ -427,12 +445,15 @@ def _run(cmd, description):
 
 
 def mask_sequences(input_fasta, output=None, masker="repeatmasker",
-                   species=None, threads=1):
-    """Repeat/low-complexity masking. Returns path to the masked FASTA."""
+                   species=None, threads=1, executable=None):
+    """Repeat/low-complexity masking. Returns path to the masked FASTA.
+
+    `executable` optionally overrides the path to RepeatMasker/dust.
+    """
     masker = masker.lower()
     if masker == "repeatmasker":
-        _require_tool("RepeatMasker")
-        cmd = ["RepeatMasker", "-pa", str(threads)]
+        binary = _require_tool("RepeatMasker", executable)
+        cmd = [binary, "-pa", str(threads)]
         if species:
             cmd += ["-species", species]
         cmd.append(str(input_fasta))
@@ -443,31 +464,31 @@ def mask_sequences(input_fasta, output=None, masker="repeatmasker",
             return str(output)
         return produced
     elif masker == "dust":
-        _require_tool("dust")
+        binary = _require_tool("dust", executable)
         out = output or f"{input_fasta}.dusted.masked"
         with open(out, "w") as fh:
-            subprocess.run(["dust", str(input_fasta)], check=True, stdout=fh)
+            subprocess.run([binary, str(input_fasta)], check=True, stdout=fh)
         print(f"[mask:dust] wrote {out}")
         return out
     else:
         raise ValueError(f"Unknown masker '{masker}' (expected 'repeatmasker' or 'dust')")
 
 
-def build_background(input_fasta, output="background.txt", order=1):
-    """Markov background model via fasta-get-markov."""
-    _require_tool("fasta-get-markov")
+def build_background(input_fasta, output="background.txt", order=1, executable=None):
+    """Markov background model via fasta-get-markov (`executable` overrides path)."""
+    binary = _require_tool("fasta-get-markov", executable)
     with open(output, "w") as fh:
-        subprocess.run(["fasta-get-markov", "-m", str(order), str(input_fasta)],
+        subprocess.run([binary, "-m", str(order), str(input_fasta)],
                        check=True, stdout=fh)
     print(f"[background] wrote {output} (order {order})")
     return output
 
 
 def run_streme(input_fasta, output_dir, nmotifs=200, minw=6, maxw=20,
-               thresh=0.05, background=None, threads=1):
-    """STREME motif discovery."""
-    _require_tool("streme")
-    cmd = ["streme", "--p", str(input_fasta),
+               thresh=0.05, background=None, threads=1, executable=None):
+    """STREME motif discovery (`executable` overrides the path to streme)."""
+    binary = _require_tool("streme", executable)
+    cmd = [binary, "--p", str(input_fasta),
            "--nmotifs", str(nmotifs),
            "--minw", str(minw), "--maxw", str(maxw),
            "--thresh", str(thresh),
@@ -523,11 +544,15 @@ def build_parser():
     p.add_argument("--masker", choices=["repeatmasker", "dust"], default="repeatmasker")
     p.add_argument("--species", help="Species for RepeatMasker")
     p.add_argument("--threads", type=int, default=1)
+    p.add_argument("--masker-path", dest="executable",
+                   help="Path to the RepeatMasker/dust executable (overrides PATH lookup)")
 
     p = sub.add_parser("background", help="Markov background model")
     p.add_argument("input_fasta")
     p.add_argument("--output", "-o", default="background.txt")
     p.add_argument("--order", type=int, default=1)
+    p.add_argument("--fasta-get-markov-path", dest="executable",
+                   help="Path to the fasta-get-markov executable (overrides PATH lookup)")
 
     p = sub.add_parser("run-streme", help="Run STREME motif discovery")
     p.add_argument("input_fasta")
@@ -538,6 +563,8 @@ def build_parser():
     p.add_argument("--thresh", type=float, default=0.05)
     p.add_argument("--background", help="Background model file (--bfile)")
     p.add_argument("--threads", type=int, default=1)
+    p.add_argument("--streme-path", dest="executable",
+                   help="Path to the streme executable (overrides PATH lookup)")
 
     return parser
 
@@ -560,13 +587,16 @@ def main(argv=None):
         )
     elif args.command == "mask":
         mask_sequences(args.input_fasta, output=args.output, masker=args.masker,
-                       species=args.species, threads=args.threads)
+                       species=args.species, threads=args.threads,
+                       executable=args.executable)
     elif args.command == "background":
-        build_background(args.input_fasta, output=args.output, order=args.order)
+        build_background(args.input_fasta, output=args.output, order=args.order,
+                         executable=args.executable)
     elif args.command == "run-streme":
         run_streme(args.input_fasta, args.output_dir, nmotifs=args.nmotifs,
                    minw=args.minw, maxw=args.maxw, thresh=args.thresh,
-                   background=args.background, threads=args.threads)
+                   background=args.background, threads=args.threads,
+                   executable=args.executable)
     return 0
 
 

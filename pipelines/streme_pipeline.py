@@ -108,6 +108,7 @@ def prepare_one_genome(spec, opts):
                 str(streme_input),
                 output=str(work_dir / f"{genome}_promoters.masked"),
                 masker=opts["mask"], species=opts["species"], threads=opts["threads"],
+                executable=opts["masker_path"],
             )
             result["steps"]["masked"] = masked
             streme_input = Path(masked)
@@ -116,7 +117,7 @@ def prepare_one_genome(spec, opts):
         if opts["background"]:
             background = genome_prep.build_background(
                 str(streme_input), output=str(work_dir / "background.txt"),
-                order=opts["background_order"],
+                order=opts["background_order"], executable=opts["markov_path"],
             )
             result["steps"]["background"] = background
 
@@ -126,6 +127,7 @@ def prepare_one_genome(spec, opts):
                 str(streme_input), str(streme_dir),
                 nmotifs=opts["nmotifs"], minw=opts["minw"], maxw=opts["maxw"],
                 thresh=opts["thresh"], background=background, threads=opts["threads"],
+                executable=opts["streme_path"],
             )
             result["steps"]["streme"] = str(streme_dir)
     except Exception as exc:  # noqa: BLE001 - surface per-genome failure to caller
@@ -155,6 +157,8 @@ def run_prepare(args):
         "min_length": args.min_length,
         "chromosomes": args.chromosomes, "contig_pattern": args.contig_pattern,
         "mask": args.mask, "species": args.species,
+        "masker_path": args.masker_path, "markov_path": args.fasta_get_markov_path,
+        "streme_path": args.streme_path,
         "background": not args.no_background, "background_order": args.background_order,
         "run_streme": not args.no_streme,
         "nmotifs": args.nmotifs, "minw": args.minw, "maxw": args.maxw, "thresh": args.thresh,
@@ -301,6 +305,12 @@ Manifest format (tab-separated, header required):
     prepare_parser.add_argument('--mask', choices=['none', 'repeatmasker', 'dust'],
                                 default='repeatmasker', help='Masking step (default: repeatmasker)')
     prepare_parser.add_argument('--species', help='Species for RepeatMasker')
+    prepare_parser.add_argument('--masker-path',
+                                help='Path to the RepeatMasker/dust executable (overrides PATH lookup)')
+    prepare_parser.add_argument('--fasta-get-markov-path',
+                                help='Path to the fasta-get-markov executable (overrides PATH lookup)')
+    prepare_parser.add_argument('--streme-path',
+                                help='Path to the streme executable (overrides PATH lookup)')
     prepare_parser.add_argument('--no-background', action='store_true',
                                 help='Skip the Markov background model step')
     prepare_parser.add_argument('--background-order', type=int, default=1,
@@ -390,6 +400,12 @@ Manifest format (tab-separated, header required):
                                  '(comma-separated names or a file; per-genome overrides via manifest)')
     full_parser.add_argument('--contig-pattern',
                             help='Restrict promoters to sequences matching this regex when --manifest is used')
+    full_parser.add_argument('--masker-path',
+                            help='Path to RepeatMasker/dust executable when --manifest is used')
+    full_parser.add_argument('--fasta-get-markov-path',
+                            help='Path to fasta-get-markov executable when --manifest is used')
+    full_parser.add_argument('--streme-path',
+                            help='Path to streme executable when --manifest is used')
     
     args = parser.parse_args()
     
@@ -479,6 +495,9 @@ Manifest format (tab-separated, header required):
                 avoid_overlap=False, min_length=1,
                 chromosomes=args.chromosomes, contig_pattern=args.contig_pattern,
                 mask=args.mask, species=args.species,
+                masker_path=args.masker_path,
+                fasta_get_markov_path=args.fasta_get_markov_path,
+                streme_path=args.streme_path,
                 no_background=False, background_order=1, no_streme=False,
                 nmotifs=200, minw=6, maxw=20, thresh=0.05,
             )

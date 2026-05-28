@@ -64,6 +64,7 @@ promoter_extraction:
 masking:
   masker: "repeatmasker"     # repeatmasker | dust | none
   species: "Penstemon"       # RepeatMasker species/library (optional)
+  executable_path: null      # --masker-path: explicit RepeatMasker/dust path (else PATH)
   notes: >
     dust is faster but aggressive and can remove legitimate AT-rich promoter
     regions. RepeatMasker needs a species library available on the host.
@@ -75,6 +76,7 @@ masking:
 background_model:
   enabled: true
   markov_order: 1
+  executable_path: null      # --fasta-get-markov-path: explicit path (else PATH)
 
 # ---------------------------------------------------------------------------
 # Phase 3: Motif discovery (STREME)
@@ -89,6 +91,7 @@ motif_discovery:
   minw: 6
   maxw: 20
   thresh: 0.05
+  executable_path: null      # --streme-path: explicit streme path (else PATH)
 
 # ---------------------------------------------------------------------------
 # Phase 4: Consolidation across genomes
