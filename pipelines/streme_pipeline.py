@@ -82,9 +82,15 @@ def prepare_one_genome(spec, opts):
 
     result = {"genome": genome, "status": "ok", "steps": {}, "error": None}
     try:
-        # Per-genome chromosome filters override the run-wide defaults.
-        chromosomes = spec.get("chromosomes") or opts["chromosomes"]
-        contig_pattern = spec.get("contig_pattern") or opts["contig_pattern"]
+        # Per-genome chromosome filters override the run-wide defaults as a unit:
+        # if a manifest row sets either field, the run-wide filters are ignored
+        # for this genome (so the two filter types are never mixed across scopes).
+        if spec.get("chromosomes") or spec.get("contig_pattern"):
+            chromosomes = spec.get("chromosomes")
+            contig_pattern = spec.get("contig_pattern")
+        else:
+            chromosomes = opts["chromosomes"]
+            contig_pattern = opts["contig_pattern"]
 
         promoters = work_dir / f"{genome}_promoters.fasta"
         genome_prep.extract_promoters(

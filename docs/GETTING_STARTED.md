@@ -52,20 +52,24 @@ python3 pipelines/streme_pipeline.py prepare \
   --upstream 1000 --threads 10 --output prepared/
 ```
 
-The `--manifest` is a tab-separated file with a header row and the columns `genome`, `fasta`, `annotation`, and an optional `expression`:
+The `--manifest` is a tab-separated file with a header row and the columns `genome`, `fasta`, `annotation`, and optional `expression`, `chromosomes`, and `contig_pattern`:
 
 ```
-genome      fasta                 annotation             expression
-P_virgatus  /data/virgatus.fa     /data/virgatus.gff3    /data/virgatus_expr.tsv
+genome      fasta                 annotation             expression               contig_pattern
+P_virgatus  /data/virgatus.fa     /data/virgatus.gff3    /data/virgatus_expr.tsv  ^Chr
+P_eatonii   /data/eatonii.fa      /data/eatonii.gff3     /data/eatonii_expr.tsv   ^PeChr
 P_barbatus  /data/barbatus.fa     /data/barbatus.gff3
 ```
+
+**Restricting to chromosomes:** assemblies often mix chromosomes with scaffolds under different names (`PeChr1…`, `Chr1`, `JBCEGF010000009.1`). Limit extraction with `--chromosomes` (a comma list or a file, one name per line) and/or `--contig-pattern` (a regex); a feature is kept only if it passes both. Because naming varies per genome, set these per genome via the manifest `chromosomes` / `contig_pattern` columns, which override the run-wide flags for that row. Filtering applies at extraction time (it relies on the annotation's sequence name).
 
 Standalone steps are also available via `cli_tools/genome_prep.py`:
 
 ```bash
 # Extract promoters only (pure Python, no external tools needed)
 python3 cli_tools/genome_prep.py extract-promoters genome.fa annot.gff3 \
-  -o promoters.fa --upstream 1000 --feature-type gene --avoid-overlap
+  -o promoters.fa --upstream 1000 --feature-type gene --avoid-overlap \
+  --contig-pattern '^PeChr'   # keep chromosomes, drop scaffolds
 
 # Plus: mask, background, run-streme subcommands
 ```

@@ -48,6 +48,14 @@ promoter_extraction:
   feature_type: "gene"       # gene | mRNA | transcript
   avoid_overlap: false       # clip a window short of an adjacent gene's body
   min_length: 1              # drop promoters shorter than this
+  # Restrict to particular sequences (e.g. assembled chromosomes, dropping
+  # scaffolds). Naming differs between assemblies, so use whichever fits:
+  #   chromosomes:    explicit allowlist (comma list or a file, one name per line)
+  #   contig_pattern: regex matched against the sequence name
+  # A feature is kept only if it passes both. Per-genome overrides can be set
+  # in the manifest (columns 'chromosomes' / 'contig_pattern').
+  chromosomes: null          # e.g. "PeChr1,PeChr2,PeChr3,PeChr4,PeChr5,PeChr6,PeChr7,PeChr8"
+  contig_pattern: null       # e.g. "^PeChr"  (keeps chromosomes, drops JBCEGF... scaffolds)
 
 # ---------------------------------------------------------------------------
 # Phase 1: Masking (auto-detected external tool; skip with mask: none)
@@ -118,10 +126,13 @@ validation:
     threshold: 0.0001
 
 # ---------------------------------------------------------------------------
-# Example manifest (write to genomes.tsv, tab-separated, header required)
+# Example manifest (write to genomes.tsv, tab-separated, header required).
+# Required: genome, fasta, annotation. Optional: expression, chromosomes,
+# contig_pattern (per-genome sequence filters that override the run-wide ones).
 # ---------------------------------------------------------------------------
-# genome       fasta                          annotation                     expression
-# P_virgatus   /data/Penstemon_virgatus.fa    /data/Penstemon_virgatus.gff3  /data/virgatus_expr.tsv
+# genome       fasta                          annotation                     expression               contig_pattern
+# P_virgatus   /data/Penstemon_virgatus.fa    /data/Penstemon_virgatus.gff3  /data/virgatus_expr.tsv  ^Chr
+# P_eatonii    /data/Penstemon_eatonii.fa     /data/Penstemon_eatonii.gff3   /data/eatonii_expr.tsv   ^PeChr
 # P_barbatus   /data/Penstemon_barbatus.fa    /data/Penstemon_barbatus.gff3
 
 # Database resources for downstream interpretation

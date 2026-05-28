@@ -70,7 +70,7 @@ P_virgatus   /data/Penstemon_virgatus.fa    /data/Penstemon_virgatus.gff3  /data
 P_barbatus   /data/Penstemon_barbatus.fa    /data/Penstemon_barbatus.gff3
 ```
 
-Annotations may be GFF3 or GTF. The `expression` column is optional.
+Annotations may be GFF3 or GTF. The `expression` column is optional, as are `chromosomes` / `contig_pattern` columns for per-genome sequence filtering (see *Restricting to chromosomes* under Stage 0 below).
 
 **To start from existing STREME results:** a directory containing one subfolder per genome, e.g.:
 
@@ -125,6 +125,18 @@ python pipelines/streme_pipeline.py prepare \
 ```
 
 Each genome flows through: **extract promoters** (1 kb upstream of TSS, strand-aware, pure Python) → **mask** (RepeatMasker or dust) → **background** (Markov model) → **STREME**. Stop early with `--mask none`, `--no-background`, or `--no-streme` (e.g. to only extract promoters, which needs no external tools). The individual steps are also available standalone via `cli_tools/genome_prep.py extract-promoters | mask | background | run-streme`.
+
+**Restricting to chromosomes:** assemblies often mix assembled chromosomes with scaffolds, under varying names (`PeChr1…`, `Chr1`, `chr01`, scaffolds like `JBCEGF010000009.1`). Limit extraction to the sequences you want with either `--chromosomes` (an explicit allowlist — a comma list or a file with one name per line) or `--contig-pattern` (a regex); a feature is kept only if it passes both. Because naming differs per genome, these can also be set **per genome** in the manifest via `chromosomes` / `contig_pattern` columns, which override the run-wide flags for that row.
+
+```bash
+# Keep the 8 Penstemon eatonii chromosomes, drop the JBCEGF... scaffolds
+python pipelines/streme_pipeline.py prepare \
+  --genome P_eatonii --fasta PeChr.BYU.final.fa --annotation P_eatonii.gff3 \
+  --contig-pattern '^PeChr' --output prepared/
+# (equivalently: --chromosomes PeChr1,PeChr2,PeChr3,PeChr4,PeChr5,PeChr6,PeChr7,PeChr8)
+```
+
+Chromosome filtering happens at extraction time (when the annotation's sequence name is still known); if you start from pre-built STREME results it no longer applies, since those are keyed by gene only.
 
 The result is `prepared/streme_<genome>/` directories, ready for consolidation below.
 
