@@ -459,6 +459,20 @@ def mask_sequences(input_fasta, output=None, masker="repeatmasker",
     masker = masker.lower()
     if masker == "repeatmasker":
         binary = _require_tool("RepeatMasker", executable)
+        if library:
+            lib_path = Path(library)
+            if not lib_path.exists():
+                raise FileNotFoundError(
+                    f"--mask-lib not found: {library} "
+                    f"(resolved: {lib_path.resolve()}). "
+                    f"Build it first with `model-repeats` and check the path "
+                    f"(use an absolute path for safety)."
+                )
+            if lib_path.stat().st_size == 0:
+                raise ValueError(
+                    f"--mask-lib is empty: {lib_path.resolve()} — "
+                    f"the RepeatModeler run probably failed; check its log."
+                )
         cmd = [binary, "-pa", str(threads)]
         if library:
             cmd += ["-lib", str(library)]
