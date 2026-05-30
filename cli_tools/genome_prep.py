@@ -485,14 +485,22 @@ def mask_sequences(input_fasta, output=None, masker="repeatmasker",
 
 
 def model_repeats(genome_fasta, output_dir, name=None, threads=1, ltr_struct=True,
+                  legacy=False,
                   repeatmodeler_executable=None, builddatabase_executable=None):
     """
     Build a species-specific repeat library with RepeatModeler.
 
     Runs `BuildDatabase` then `RepeatModeler` inside `output_dir` so all their
     intermediate files (`RM_*/`, BLAST DB) stay co-located with the resulting
-    `<name>-families.fa` library. That FASTA is what you pass to
+    library. The library FASTA is what you pass to
     `mask_sequences(..., library=...)` (RepeatMasker's -lib).
+
+    Modes:
+      - Default (RepeatModeler 2.x): writes `<name>-families.fa` and uses
+        `-threads N` plus `-LTRStruct` (unless `ltr_struct=False`).
+      - `legacy=True` (RepeatModeler 1.x): writes the library to
+        `RM_*/consensi.fa.classified` and uses `-pa N` with `-engine ncbi`;
+        `-LTRStruct` is unavailable in 1.x and is silently dropped.
 
     Long-running: typically hours to days for a plant genome. Designed to be
     run once per species, not on every prepare invocation.
@@ -508,17 +516,35 @@ def model_repeats(genome_fasta, output_dir, name=None, threads=1, ltr_struct=Tru
     _run([bd, "-name", db_name, genome_abs],
          "model-repeats:BuildDatabase", cwd=str(output_dir))
 
-    cmd = [rm, "-database", db_name, "-threads", str(threads)]
-    if ltr_struct:
-        cmd.append("-LTRStruct")
+    if legacy:
+        cmd = [rm, "-database", db_name, "-engine", "ncbi", "-pa", str(threads)]
+        if ltr_struct:
+            print("[model-repeats] --legacy: -LTRStruct is unavailable in "
+                  "RepeatModeler 1.x; dropping it.")
+    else:
+        cmd = [rm, "-database", db_name, "-threads", str(threads)]
+        if ltr_struct:
+            cmd.append("-LTRStruct")
     _run(cmd, "model-repeats:RepeatModeler", cwd=str(output_dir))
 
-    library = output_dir / f"{db_name}-families.fa"
-    print(f"[model-repeats] custom library written -> {library}")
-    if not library.exists():
-        print(f"[model-repeats] WARNING: expected {library} was not produced; "
+    # 2.x writes <name>-families.fa; 1.x writes RM_*/consensi.fa.classified.
+    families = output_dir / f"{db_name}-families.fa"
+    if families.exists():
+        library = families
+    else:
+        legacy_hits = sorted(output_dir.glob("RM_*/consensi.fa.classified"))
+        library = legacy_hits[-1] if legacy_hits else families
+
+    if library.exists():
+        print(f"[model-repeats] custom library written -> {library}")
+        if legacy and library.name != f"{db_name}-families.fa":
+            print(f"[model-repeats] (pass {library} as --mask-lib)")
+        return str(library)
+    else:
+        print(f"[model-repeats] WARNING: no library found under {output_dir} "
+              f"(looked for {db_name}-families.fa and RM_*/consensi.fa.classified); "
               "check the RepeatModeler log for errors.")
-    return str(library)
+        return None
 
 
 def build_background(input_fasta, output="background.txt", order=1, executable=None):
@@ -639,6 +665,9 @@ def build_parser():
     p.add_argument("--threads", type=int, default=1)
     p.add_argument("--no-ltr-struct", action="store_true",
                    help="Disable RepeatModeler's -LTRStruct stage (faster but misses LTR families)")
+    p.add_argument("--legacy", action="store_true",
+                   help="Use RepeatModeler 1.x flags: -pa instead of -threads, -engine ncbi, "
+                        "no -LTRStruct. Library is written to RM_*/consensi.fa.classified.")
     p.add_argument("--repeatmodeler-path", dest="repeatmodeler_executable",
                    help="Path to the RepeatModeler executable (overrides PATH lookup)")
     p.add_argument("--builddatabase-path", dest="builddatabase_executable",
@@ -711,7 +740,7 @@ def main(argv=None):
     elif args.command == "model-repeats":
         model_repeats(args.genome_fasta, args.output_dir,
                       name=args.name, threads=args.threads,
-                      ltr_struct=not args.no_ltr_struct,
+                      ltr_struct=not args.no_ltr_struct, legacy=args.legacy,
                       repeatmodeler_executable=args.repeatmodeler_executable,
                       builddatabase_executable=args.builddatabase_executable)
     elif args.command == "background":

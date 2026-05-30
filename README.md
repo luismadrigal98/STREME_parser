@@ -147,6 +147,8 @@ streme-parser prepare --genome P_eatonii \
 
 For multi-genome runs, set the library per row in the manifest (`lib` column) instead — `lib` overrides `--mask-lib`, and `lib` takes precedence over `species` if both are set. `model-repeats` accepts `--repeatmodeler-path` / `--builddatabase-path` if those tools live outside `PATH`, and `--no-ltr-struct` to skip the (slow) LTR discovery stage.
 
+If you're on **RepeatModeler 1.x** (`-pa` instead of `-threads`, no `-LTRStruct`), add `--legacy`. The wrapper switches to `-pa N -engine ncbi`, drops `-LTRStruct`, and locates the library at `RM_*/consensi.fa.classified` — that path is what to pass as `--mask-lib`.
+
 **Restricting to chromosomes:** assemblies often mix assembled chromosomes with scaffolds, under varying names (`PeChr1…`, `Chr1`, `chr01`, scaffolds like `JBCEGF010000009.1`). Limit extraction to the sequences you want with either `--chromosomes` (an explicit allowlist — a comma list or a file with one name per line) or `--contig-pattern` (a regex); a feature is kept only if it passes both. Because naming differs per genome, these can also be set **per genome** in the manifest via `chromosomes` / `contig_pattern` columns, which override the run-wide flags for that row.
 
 ```bash
