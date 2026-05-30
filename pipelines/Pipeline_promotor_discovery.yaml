@@ -94,6 +94,26 @@ motif_discovery:
   executable_path: null      # --streme-path: explicit streme path (else PATH)
 
 # ---------------------------------------------------------------------------
+# Phase 3b (optional): Motif scan with FIMO using the STREME motifs.
+#   Inline:     streme_pipeline.py prepare ... --run-fimo --fimo-thresh 0.05 --fimo-qv-thresh
+#   Standalone: streme_pipeline.py scan <prepared_dir> --thresh 0.05 --qv-thresh --jobs N
+# Per genome the scan uses streme_<genome>/streme.txt as the motif file,
+# <genome>_prep/<genome>_promoters.masked as the sequence file, and
+# <genome>_prep/background.txt as the background (falls back to the motif
+# file's embedded background if no background.txt is present).
+# Promoters are ~1 kb, matching FIMO's recommended scan length.
+# ---------------------------------------------------------------------------
+motif_scan:
+  enabled: false             # --run-fimo in prepare, or use the `scan` subcommand
+  tool: "FIMO"
+  thresh: 0.0001             # p-value, or q-value when qv_thresh is true
+  qv_thresh: false           # interpret thresh as a q-value cutoff (e.g. 0.05)
+  no_qvalue: false           # skip q-value computation entirely
+  max_strand: false          # report only the higher-scoring strand of overlapping matches
+  motif: null                # restrict to a specific motif ID (default: scan all)
+  executable_path: null      # --fimo-path: explicit fimo path (else PATH)
+
+# ---------------------------------------------------------------------------
 # Phase 4: Consolidation across genomes
 #   CLI:  streme_sites_consolidator.py consolidate <output_root> \
 #           --output outputs/consolidated_streme_sites --threshold 0.75

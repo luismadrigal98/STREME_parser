@@ -10,7 +10,8 @@ Subcommands:
   extract-promoters  Pull N bp upstream of each gene's TSS into a FASTA
   mask               Repeat/low-complexity masking (RepeatMasker or dust)
   background         Markov background model (fasta-get-markov)
-  run-streme         Motif discovery (STREME)
+  run-streme         De novo motif discovery (STREME)
+  run-fimo           Motif scan (FIMO) — locate STREME motif hits at controlled p/q
 
 The promoter extractor is pure standard library (with an optional pyfaidx
 speed-up) so it works on any machine without external bioinformatics tools.
@@ -484,6 +485,39 @@ def build_background(input_fasta, output="background.txt", order=1, executable=N
     return output
 
 
+def run_fimo(motif_file, sequence_file, output_dir, thresh=1e-4,
+             qv_thresh=False, no_qvalue=False, max_strand=False,
+             parse_genomic_coord=False, bgfile=None, motif=None,
+             executable=None):
+    """
+    FIMO motif scan: locate matches of `motif_file` (e.g. streme.txt, MEME format)
+    in `sequence_file` (FASTA), writing results to `output_dir` (--oc).
+
+    Standard "STREME → FIMO" workflow: scan the same promoter sequences with the
+    de novo motifs to localise hits at a controlled p-/q-value. Pass `bgfile` to
+    use a sequence-derived background (recommended); the literal string
+    "motif-file" tells FIMO to use the background embedded in the motif file.
+    `executable` overrides the path to the fimo binary.
+    """
+    binary = _require_tool("fimo", executable)
+    cmd = [binary, "--oc", str(output_dir), "--thresh", str(thresh)]
+    if qv_thresh:
+        cmd.append("--qv-thresh")
+    if no_qvalue:
+        cmd.append("--no-qvalue")
+    if max_strand:
+        cmd.append("--max-strand")
+    if parse_genomic_coord:
+        cmd.append("--parse-genomic-coord")
+    if bgfile:
+        cmd += ["--bgfile", str(bgfile)]
+    if motif:
+        cmd += ["--motif", str(motif)]
+    cmd += [str(motif_file), str(sequence_file)]
+    _run(cmd, "run-fimo")
+    return str(output_dir)
+
+
 def run_streme(input_fasta, output_dir, nmotifs=200, minw=6, maxw=20,
                thresh=0.05, background=None, threads=1, executable=None):
     """STREME motif discovery (`executable` overrides the path to streme)."""
@@ -566,6 +600,28 @@ def build_parser():
     p.add_argument("--streme-path", dest="executable",
                    help="Path to the streme executable (overrides PATH lookup)")
 
+    p = sub.add_parser("run-fimo", help="Run FIMO motif scan (typically with STREME motifs)")
+    p.add_argument("motif_file", help="MEME-format motif file (e.g. streme.txt from STREME output)")
+    p.add_argument("sequence_file", help="FASTA of sequences to scan")
+    p.add_argument("--output-dir", "-o", required=True, help="FIMO output directory (--oc)")
+    p.add_argument("--thresh", type=float, default=1e-4,
+                   help="Match p-value threshold, or q-value when --qv-thresh (default: 1e-4)")
+    p.add_argument("--qv-thresh", action="store_true",
+                   help="Interpret --thresh as a q-value cutoff (e.g. 0.05)")
+    p.add_argument("--no-qvalue", action="store_true",
+                   help="Skip q-value computation (recommended when scanning very large databases)")
+    p.add_argument("--max-strand", action="store_true",
+                   help="Report only the higher-scoring strand of overlapping matches")
+    p.add_argument("--parse-genomic-coord", action="store_true",
+                   help="Parse genomic coordinates from FASTA headers (e.g. chr1:1000-2000)")
+    p.add_argument("--bgfile",
+                   help="Background model file. Use the literal 'motif-file' to use "
+                        "the background embedded in the motif file (default).")
+    p.add_argument("--motif",
+                   help="Restrict to a specific motif ID from the motif file")
+    p.add_argument("--fimo-path", dest="executable",
+                   help="Path to the fimo executable (overrides PATH lookup)")
+
     return parser
 
 
@@ -597,6 +653,13 @@ def main(argv=None):
                    minw=args.minw, maxw=args.maxw, thresh=args.thresh,
                    background=args.background, threads=args.threads,
                    executable=args.executable)
+    elif args.command == "run-fimo":
+        run_fimo(args.motif_file, args.sequence_file, args.output_dir,
+                 thresh=args.thresh, qv_thresh=args.qv_thresh,
+                 no_qvalue=args.no_qvalue, max_strand=args.max_strand,
+                 parse_genomic_coord=args.parse_genomic_coord,
+                 bgfile=args.bgfile, motif=args.motif,
+                 executable=args.executable)
     return 0
 
 

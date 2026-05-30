@@ -140,6 +140,21 @@ python pipelines/streme_pipeline.py prepare \
 
 Chromosome filtering happens at extraction time (when the annotation's sequence name is still known); if you start from pre-built STREME results it no longer applies, since those are keyed by gene only.
 
+**FIMO scan of the STREME motifs.** STREME → FIMO is the canonical MEME-Suite chain: STREME discovers motifs *de novo*; FIMO then locates each motif's hits in your sequences at a controlled p- or q-value. Two ways to run it:
+
+```bash
+# 1) Inline — add FIMO to a prepare run (one fimo_<genome>/ per genome)
+python pipelines/streme_pipeline.py prepare --manifest genomes.tsv --jobs 4 \
+  --run-fimo --fimo-thresh 0.05 --fimo-qv-thresh --fimo-max-strand
+
+# 2) Standalone — scan an existing prepared/ tree (useful for tuning thresholds
+#    or re-scanning a different sequence set without rerunning STREME)
+python pipelines/streme_pipeline.py scan prepared/ --jobs 4 \
+  --thresh 0.05 --qv-thresh --max-strand
+```
+
+Defaults follow MEME-Suite guidance: for each genome `scan` picks `streme_<genome>/streme.txt` as the motif file, `<genome>_prep/<genome>_promoters.masked` as the sequence file, and `<genome>_prep/background.txt` as `--bgfile` (falling back to the motifs' embedded background if no background.txt). Override any of these with `--sequence` / `--bgfile`. Promoters are already ≤1 kb (matching FIMO's recommended scan length), so the default p-value 0.0001 yields a manageable false-positive rate; for safer reporting use `--qv-thresh` with `--thresh 0.05` (q-value ≤ 0.05).
+
 The result is `prepared/streme_<genome>/` directories, ready for consolidation below.
 
 ## Quickstart (most direct path)
@@ -243,7 +258,8 @@ bin/streme-parser full prepared/ expression.tsv --manifest genomes.tsv --jobs 4 
 ```
 
 **Pipeline commands available:**
-- `prepare`: Genomes → promoters → mask → background → STREME (parallel across genomes)
+- `prepare`: Genomes → promoters → mask → background → STREME (parallel across genomes; optionally also FIMO via `--run-fimo`)
+- `scan`: FIMO-scan a `prepared/` tree — locate STREME-motif hits per genome at a controlled p/q-value
 - `consolidate`: Consolidate STREME motifs across genomes
 - `validate`: Validate motif consolidation quality
 - `analyze`: Run motif-expression analysis (absolute or relative)

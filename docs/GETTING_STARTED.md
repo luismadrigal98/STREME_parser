@@ -74,7 +74,23 @@ python3 cli_tools/genome_prep.py extract-promoters genome.fa annot.gff3 \
 # Plus: mask, background, run-streme subcommands
 ```
 
-The `mask`, `background`, and `run-streme` steps auto-detect the external tool they need on `PATH` and error clearly if it is missing. If a tool lives at a module path instead (common on HPC), point at it with `--masker-path` (RepeatMasker/dust), `--fasta-get-markov-path`, or `--streme-path` — available on `prepare`, `full`, and the standalone subcommands.
+The `mask`, `background`, `run-streme`, and `run-fimo` steps auto-detect the external tool they need on `PATH` and error clearly if it is missing. If a tool lives at a module path instead (common on HPC), point at it with `--masker-path` (RepeatMasker/dust), `--fasta-get-markov-path`, `--streme-path`, or `--fimo-path` — available on `prepare`, `full`, `scan`, and the standalone subcommands.
+
+### `scan` - FIMO motif scan (STREME → FIMO)
+
+STREME discovers motifs *de novo*; FIMO then locates each motif's hits in your sequences at a controlled p- or q-value. Run inline as part of `prepare`, or as a standalone step against an existing `prepared/` tree:
+
+```bash
+# Inline: add --run-fimo to a prepare run
+python3 pipelines/streme_pipeline.py prepare --manifest genomes.tsv --jobs 4 \
+  --run-fimo --fimo-thresh 0.05 --fimo-qv-thresh --fimo-max-strand
+
+# Standalone: scan a previously prepared tree (handy for tuning thresholds)
+python3 pipelines/streme_pipeline.py scan prepared/ --jobs 4 \
+  --thresh 0.05 --qv-thresh --max-strand
+```
+
+For each `streme_<genome>/` the scan auto-picks `streme.txt` as the motif file, `<genome>_prep/<genome>_promoters.masked` as the sequence file, and `<genome>_prep/background.txt` as `--bgfile` (falling back to the motifs' embedded background). Override any with `--sequence`/`--bgfile`. Output goes to `fimo_<genome>/`.
 
 ### `consolidate` - Consolidate STREME Sites
 

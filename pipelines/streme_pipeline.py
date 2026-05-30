@@ -130,6 +130,25 @@ def prepare_one_genome(spec, opts):
                 executable=opts["streme_path"],
             )
             result["steps"]["streme"] = str(streme_dir)
+
+            if opts["run_fimo"]:
+                motif_file = streme_dir / "streme.txt"
+                if not motif_file.exists():
+                    raise FileNotFoundError(
+                        f"FIMO requested but STREME motif file not found: {motif_file}"
+                    )
+                fimo_bg = background if background else "motif-file"
+                fimo_dir = out_root / f"fimo_{genome}"
+                genome_prep.run_fimo(
+                    str(motif_file), str(streme_input), str(fimo_dir),
+                    thresh=opts["fimo_thresh"],
+                    qv_thresh=opts["fimo_qv_thresh"],
+                    no_qvalue=opts["fimo_no_qvalue"],
+                    max_strand=opts["fimo_max_strand"],
+                    bgfile=fimo_bg, motif=opts["fimo_motif"],
+                    executable=opts["fimo_path"],
+                )
+                result["steps"]["fimo"] = str(fimo_dir)
     except Exception as exc:  # noqa: BLE001 - surface per-genome failure to caller
         result["status"] = "failed"
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -138,6 +157,11 @@ def prepare_one_genome(spec, opts):
 
 def run_prepare(args):
     """Drive genome preparation for one or many genomes, parallel across genomes."""
+    if args.run_fimo and args.no_streme:
+        print("Error: --run-fimo requires STREME output; remove --no-streme or run the "
+              "'scan' subcommand against an existing STREME directory.")
+        return False
+
     if args.manifest:
         specs = read_genome_manifest(args.manifest)
     else:
@@ -159,6 +183,10 @@ def run_prepare(args):
         "mask": args.mask, "species": args.species,
         "masker_path": args.masker_path, "markov_path": args.fasta_get_markov_path,
         "streme_path": args.streme_path,
+        "run_fimo": args.run_fimo, "fimo_thresh": args.fimo_thresh,
+        "fimo_qv_thresh": args.fimo_qv_thresh, "fimo_no_qvalue": args.fimo_no_qvalue,
+        "fimo_max_strand": args.fimo_max_strand, "fimo_motif": args.fimo_motif,
+        "fimo_path": args.fimo_path,
         "background": not args.no_background, "background_order": args.background_order,
         "run_streme": not args.no_streme,
         "nmotifs": args.nmotifs, "minw": args.minw, "maxw": args.maxw, "thresh": args.thresh,
@@ -194,6 +222,141 @@ def run_prepare(args):
     print(f"\n{ok}/{len(results)} genome(s) prepared successfully.")
     if ok and not args.no_streme:
         print(f"Next: python {sys.argv[0]} consolidate {args.output} --output outputs/consolidated_streme_sites")
+    return ok == len(results)
+
+
+def scan_one_genome(spec, opts):
+    """
+    Run FIMO for one genome (used as a worker by run_scan).
+
+    spec: {"genome", "streme_dir", "sequence_file", "bgfile"}
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "cli_tools"))
+    import genome_prep
+
+    genome = spec["genome"]
+    out_root = Path(opts["output"])
+    out_root.mkdir(parents=True, exist_ok=True)
+    fimo_dir = out_root / f"fimo_{genome}"
+
+    result = {"genome": genome, "status": "ok", "output": str(fimo_dir), "error": None}
+    try:
+        genome_prep.run_fimo(
+            spec["motif_file"], spec["sequence_file"], str(fimo_dir),
+            thresh=opts["thresh"], qv_thresh=opts["qv_thresh"],
+            no_qvalue=opts["no_qvalue"], max_strand=opts["max_strand"],
+            parse_genomic_coord=opts["parse_genomic_coord"],
+            bgfile=spec["bgfile"], motif=opts["motif"],
+            executable=opts["fimo_path"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        result["status"] = "failed"
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def _resolve_scan_specs(prepared_dir, sequence_override, bgfile_override, target_genomes):
+    """
+    Walk a prepared/ directory and resolve per-genome FIMO inputs.
+
+    For each `streme_<genome>/` subdir: locate streme.txt, choose a sequence
+    file (--sequence override > prepared/<genome>_prep/<genome>_promoters.masked
+    > the .fasta), and pick a background (--bgfile override > prepared/
+    <genome>_prep/background.txt > literal 'motif-file').
+    """
+    prepared = Path(prepared_dir)
+    if not prepared.is_dir():
+        raise FileNotFoundError(f"Prepared directory not found: {prepared}")
+
+    specs = []
+    missing = []
+    for entry in sorted(prepared.iterdir()):
+        if not (entry.is_dir() and entry.name.startswith("streme_")):
+            continue
+        genome = entry.name[len("streme_"):]
+        if target_genomes and genome not in target_genomes:
+            continue
+
+        motif_file = entry / "streme.txt"
+        if not motif_file.exists():
+            missing.append(f"{entry.name}: no streme.txt")
+            continue
+
+        if sequence_override:
+            sequence_file = Path(sequence_override)
+        else:
+            work_dir = prepared / f"{genome}_prep"
+            candidates = [
+                work_dir / f"{genome}_promoters.masked",
+                work_dir / f"{genome}_promoters.fasta",
+            ]
+            sequence_file = next((c for c in candidates if c.exists()), None)
+            if sequence_file is None:
+                missing.append(f"{genome}: no sequence file (looked in {work_dir})")
+                continue
+
+        if bgfile_override:
+            bgfile = bgfile_override
+        else:
+            bg_path = prepared / f"{genome}_prep" / "background.txt"
+            bgfile = str(bg_path) if bg_path.exists() else "motif-file"
+
+        specs.append({
+            "genome": genome,
+            "motif_file": str(motif_file),
+            "sequence_file": str(sequence_file),
+            "bgfile": bgfile,
+        })
+    return specs, missing
+
+
+def run_scan(args):
+    """FIMO-scan every prepared genome's STREME motifs, in parallel across genomes."""
+    target = set(args.genomes.split(",")) if args.genomes else None
+    specs, missing = _resolve_scan_specs(args.prepared_dir, args.sequence,
+                                         args.bgfile, target)
+
+    if not specs:
+        print("Error: no FIMO-able genomes found in", args.prepared_dir)
+        for m in missing:
+            print(" -", m)
+        return False
+
+    output_root = args.output or args.prepared_dir
+    opts = {
+        "output": output_root,
+        "thresh": args.thresh, "qv_thresh": args.qv_thresh,
+        "no_qvalue": args.no_qvalue, "max_strand": args.max_strand,
+        "parse_genomic_coord": args.parse_genomic_coord,
+        "motif": args.motif, "fimo_path": args.fimo_path,
+    }
+    Path(output_root).mkdir(parents=True, exist_ok=True)
+
+    print(f"\n=== SCAN: {len(specs)} genome(s) -> {output_root} ===")
+    for s in specs:
+        print(f"  - {s['genome']}: motifs={s['motif_file']} seq={s['sequence_file']} bg={s['bgfile']}")
+    for m in missing:
+        print(f"  (skipped) {m}")
+
+    results = []
+    if args.jobs > 1 and len(specs) > 1:
+        with ProcessPoolExecutor(max_workers=args.jobs) as pool:
+            futures = {pool.submit(scan_one_genome, s, opts): s["genome"] for s in specs}
+            for fut in as_completed(futures):
+                results.append(fut.result())
+    else:
+        for s in specs:
+            results.append(scan_one_genome(s, opts))
+
+    print("\n=== SCAN SUMMARY ===")
+    ok = 0
+    for r in sorted(results, key=lambda x: x["genome"]):
+        if r["status"] == "ok":
+            ok += 1
+            print(f"  ✅ {r['genome']}: {r['output']}")
+        else:
+            print(f"  ❌ {r['genome']}: {r['error']}")
+    print(f"\n{ok}/{len(results)} genome(s) scanned successfully.")
     return ok == len(results)
 
 
@@ -311,6 +474,23 @@ Manifest format (tab-separated, header required):
                                 help='Path to the fasta-get-markov executable (overrides PATH lookup)')
     prepare_parser.add_argument('--streme-path',
                                 help='Path to the streme executable (overrides PATH lookup)')
+    # Optional inline FIMO scan with the STREME motifs
+    prepare_parser.add_argument('--run-fimo', action='store_true',
+                                help='After STREME, run FIMO to scan the same masked promoters '
+                                     'with the discovered motifs (writes fimo_<genome>/)')
+    prepare_parser.add_argument('--fimo-thresh', type=float, default=1e-4,
+                                help='FIMO match p-value threshold, or q-value with --fimo-qv-thresh '
+                                     '(default: 1e-4)')
+    prepare_parser.add_argument('--fimo-qv-thresh', action='store_true',
+                                help='Interpret --fimo-thresh as a q-value cutoff (e.g. 0.05)')
+    prepare_parser.add_argument('--fimo-no-qvalue', action='store_true',
+                                help='Skip FIMO q-value computation')
+    prepare_parser.add_argument('--fimo-max-strand', action='store_true',
+                                help='FIMO: report only the higher-scoring strand of overlapping matches')
+    prepare_parser.add_argument('--fimo-motif',
+                                help='FIMO: restrict scan to a specific motif ID')
+    prepare_parser.add_argument('--fimo-path',
+                                help='Path to the fimo executable (overrides PATH lookup)')
     prepare_parser.add_argument('--no-background', action='store_true',
                                 help='Skip the Markov background model step')
     prepare_parser.add_argument('--background-order', type=int, default=1,
@@ -321,6 +501,48 @@ Manifest format (tab-separated, header required):
     prepare_parser.add_argument('--minw', type=int, default=6, help='STREME --minw (default: 6)')
     prepare_parser.add_argument('--maxw', type=int, default=20, help='STREME --maxw (default: 20)')
     prepare_parser.add_argument('--thresh', type=float, default=0.05, help='STREME --thresh (default: 0.05)')
+
+    # Scan subcommand: FIMO every genome's STREME motifs against its promoters
+    scan_parser = subparsers.add_parser(
+        'scan',
+        help='FIMO-scan every prepared genome\'s STREME motifs against its promoters',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Scan all genomes in prepared/ at the default p-value threshold
+  %(prog)s scan prepared/ --jobs 4
+
+  # Use a q-value cutoff (recommended for typical analyses)
+  %(prog)s scan prepared/ --thresh 0.05 --qv-thresh --jobs 4
+
+  # Scan a different sequence set with each genome's STREME motifs
+  %(prog)s scan prepared/ --sequence custom.fa --output custom_fimo/
+
+For each streme_<genome>/ directory the scan picks: streme.txt as the motif
+file, <genome>_prep/<genome>_promoters.masked as the default sequence file,
+and <genome>_prep/background.txt as the background (else uses the motif
+file's embedded background).
+        """
+    )
+    scan_parser.add_argument('prepared_dir', help='Directory produced by `prepare` (contains streme_<genome>/ dirs)')
+    scan_parser.add_argument('--output', '-o', help='Output root (default: same as prepared_dir)')
+    scan_parser.add_argument('--jobs', '-j', type=int, default=1,
+                             help='Genomes to scan in parallel (default: 1)')
+    scan_parser.add_argument('--genomes', help='Comma-separated subset of genomes to scan')
+    scan_parser.add_argument('--sequence', help='Override sequence FASTA for all genomes')
+    scan_parser.add_argument('--bgfile', help='Override FIMO background for all genomes '
+                                              '("motif-file" uses the motif file\'s embedded background)')
+    scan_parser.add_argument('--thresh', type=float, default=1e-4,
+                             help='FIMO match threshold (default: 1e-4)')
+    scan_parser.add_argument('--qv-thresh', action='store_true',
+                             help='Interpret --thresh as a q-value cutoff (e.g. 0.05)')
+    scan_parser.add_argument('--no-qvalue', action='store_true', help='Skip FIMO q-value computation')
+    scan_parser.add_argument('--max-strand', action='store_true',
+                             help='Report only the higher-scoring strand of overlapping matches')
+    scan_parser.add_argument('--parse-genomic-coord', action='store_true',
+                             help='Parse genomic coords from FASTA headers')
+    scan_parser.add_argument('--motif', help='Restrict to a specific motif ID')
+    scan_parser.add_argument('--fimo-path', help='Path to the fimo executable')
 
     # Consolidate subcommand
     consolidate_parser = subparsers.add_parser('consolidate', help='Consolidate STREME motifs')
@@ -421,6 +643,10 @@ Manifest format (tab-separated, header required):
         success = run_prepare(args)
         sys.exit(0 if success else 1)
 
+    elif args.command == 'scan':
+        success = run_scan(args)
+        sys.exit(0 if success else 1)
+
     elif args.command == 'consolidate':
         cmd = [
             'python', str(project_root / 'cli_tools' / 'streme_sites_consolidator.py'),
@@ -500,6 +726,9 @@ Manifest format (tab-separated, header required):
                 streme_path=args.streme_path,
                 no_background=False, background_order=1, no_streme=False,
                 nmotifs=200, minw=6, maxw=20, thresh=0.05,
+                run_fimo=False, fimo_thresh=1e-4, fimo_qv_thresh=False,
+                fimo_no_qvalue=False, fimo_max_strand=False, fimo_motif=None,
+                fimo_path=None,
             )
             if not run_prepare(prepare_args):
                 print("⚠️  Some genomes failed to prepare; continuing with what succeeded.")
