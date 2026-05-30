@@ -76,6 +76,22 @@ python3 cli_tools/genome_prep.py extract-promoters genome.fa annot.gff3 \
 
 The `mask`, `background`, `run-streme`, and `run-fimo` steps auto-detect the external tool they need on `PATH` and error clearly if it is missing. If a tool lives at a module path instead (common on HPC), point at it with `--masker-path` (RepeatMasker/dust), `--fasta-get-markov-path`, `--streme-path`, or `--fimo-path` — available on `prepare`, `full`, `scan`, and the standalone subcommands.
 
+**Custom RepeatMasker library (non-model organisms).** Dfam's bundled root partition often lacks plant clades, so `--species` will fail. Build a species-specific library once with RepeatModeler, then point `prepare` at it via `--mask-lib`:
+
+```bash
+# 1) One-time per species (hours-to-days)
+python3 cli_tools/genome_prep.py model-repeats penstemon_eatonii/PeChr.BYU.final.fa \
+  --output-dir repeats/P_eatonii --name P_eatonii --threads 16
+#   -> repeats/P_eatonii/P_eatonii-families.fa
+
+# 2) Use on every prepare run
+streme-parser prepare --genome P_eatonii --fasta ... --annotation ... \
+  --mask repeatmasker --mask-lib repeats/P_eatonii/P_eatonii-families.fa \
+  --threads 10 --output prepared/
+```
+
+For multi-genome runs set the library per row via the manifest `lib` column. `lib` overrides `--mask-lib`, and `lib` takes precedence over `species` when both are present for a genome.
+
 ### `scan` - FIMO motif scan (STREME → FIMO)
 
 STREME discovers motifs *de novo*; FIMO then locates each motif's hits in your sequences at a controlled p- or q-value. Run inline as part of `prepare`, or as a standalone step against an existing `prepared/` tree:

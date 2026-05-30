@@ -128,6 +128,25 @@ Each genome flows through: **extract promoters** (1 kb upstream of TSS, strand-a
 
 The external tools are looked up on `PATH` by default. If they live at a module path (common on HPC), point at them explicitly with `--masker-path` (RepeatMasker/dust), `--fasta-get-markov-path`, and `--streme-path` — accepted on `prepare`, `full`, and the standalone `genome_prep.py` subcommands. A missing/unrunnable executable fails with a clear message.
 
+**Custom RepeatMasker library (recommended for non-model organisms).** Dfam often ships only a tiny root partition and lacks plant clades; `--species "Penstemon"` will silently fall back to defaults (typically `homo sapiens`) and fail. Build a species-specific library once with RepeatModeler, then point `prepare` at it via `--mask-lib`:
+
+```bash
+# 1) One-time, per species (hours-to-days for a plant genome; runs BuildDatabase + RepeatModeler)
+python cli_tools/genome_prep.py model-repeats penstemon_eatonii/PeChr.BYU.final.fa \
+  --output-dir repeats/P_eatonii --name P_eatonii --threads 16
+#   -> repeats/P_eatonii/P_eatonii-families.fa
+
+# 2) Use it on every prepare run for that genome
+streme-parser prepare --genome P_eatonii \
+  --fasta penstemon_eatonii/PeChr.BYU.final.fa \
+  --annotation penstemon_eatonii/penstemon_eatonii_final_nuclear_cp.gff3 \
+  --upstream 2000 --contig-pattern '^PeChr' --threads 10 \
+  --mask repeatmasker --mask-lib repeats/P_eatonii/P_eatonii-families.fa \
+  --output prepared_penstemon_eatonii
+```
+
+For multi-genome runs, set the library per row in the manifest (`lib` column) instead — `lib` overrides `--mask-lib`, and `lib` takes precedence over `species` if both are set. `model-repeats` accepts `--repeatmodeler-path` / `--builddatabase-path` if those tools live outside `PATH`, and `--no-ltr-struct` to skip the (slow) LTR discovery stage.
+
 **Restricting to chromosomes:** assemblies often mix assembled chromosomes with scaffolds, under varying names (`PeChr1…`, `Chr1`, `chr01`, scaffolds like `JBCEGF010000009.1`). Limit extraction to the sequences you want with either `--chromosomes` (an explicit allowlist — a comma list or a file with one name per line) or `--contig-pattern` (a regex); a feature is kept only if it passes both. Because naming differs per genome, these can also be set **per genome** in the manifest via `chromosomes` / `contig_pattern` columns, which override the run-wide flags for that row.
 
 ```bash

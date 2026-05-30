@@ -63,7 +63,12 @@ promoter_extraction:
 # ---------------------------------------------------------------------------
 masking:
   masker: "repeatmasker"     # repeatmasker | dust | none
-  species: "Penstemon"       # RepeatMasker species/library (optional)
+  species: "Penstemon"       # RepeatMasker --species (Dfam lookup) — frequently
+                             #   insufficient for non-model organisms; prefer library_path
+  library_path: null         # --mask-lib: custom RepeatMasker library FASTA (-lib).
+                             #   Build one once with `genome_prep.py model-repeats`
+                             #   (RepeatModeler). Takes precedence over species when both set.
+                             #   Per-genome overrides via the manifest `lib` column.
   executable_path: null      # --masker-path: explicit RepeatMasker/dust path (else PATH)
   notes: >
     dust is faster but aggressive and can remove legitimate AT-rich promoter
@@ -150,12 +155,17 @@ validation:
 
 # ---------------------------------------------------------------------------
 # Example manifest (write to genomes.tsv, tab-separated, header required).
-# Required: genome, fasta, annotation. Optional: expression, chromosomes,
-# contig_pattern (per-genome sequence filters that override the run-wide ones).
+# Required: genome, fasta, annotation.
+# Optional: expression, chromosomes, contig_pattern, lib, species.
+#   - chromosomes / contig_pattern: per-genome sequence filters (override
+#     --chromosomes / --contig-pattern).
+#   - lib / species: per-genome RepeatMasker library / species (override
+#     --mask-lib / --species). `lib` (a RepeatModeler-built library FASTA) wins
+#     over `species` for that genome.
 # ---------------------------------------------------------------------------
-# genome       fasta                          annotation                     expression               contig_pattern
-# P_virgatus   /data/Penstemon_virgatus.fa    /data/Penstemon_virgatus.gff3  /data/virgatus_expr.tsv  ^Chr
-# P_eatonii    /data/Penstemon_eatonii.fa     /data/Penstemon_eatonii.gff3   /data/eatonii_expr.tsv   ^PeChr
+# genome       fasta                          annotation                     expression               contig_pattern  lib
+# P_virgatus   /data/Penstemon_virgatus.fa    /data/Penstemon_virgatus.gff3  /data/virgatus_expr.tsv  ^Chr            /repeats/P_virgatus/P_virgatus-families.fa
+# P_eatonii    /data/Penstemon_eatonii.fa     /data/Penstemon_eatonii.gff3   /data/eatonii_expr.tsv   ^PeChr          /repeats/P_eatonii/P_eatonii-families.fa
 # P_barbatus   /data/Penstemon_barbatus.fa    /data/Penstemon_barbatus.gff3
 
 # Database resources for downstream interpretation

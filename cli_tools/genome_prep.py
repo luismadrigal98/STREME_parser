@@ -8,6 +8,8 @@ tools documented in the pipeline config so they can be run as commands.
 
 Subcommands:
   extract-promoters  Pull N bp upstream of each gene's TSS into a FASTA
+  model-repeats      One-time: build a species-specific RepeatMasker library
+                     with RepeatModeler (BuildDatabase + RepeatModeler)
   mask               Repeat/low-complexity masking (RepeatMasker or dust)
   background         Markov background model (fasta-get-markov)
   run-streme         De novo motif discovery (STREME)
@@ -440,22 +442,29 @@ def _require_tool(tool, executable=None):
     return path
 
 
-def _run(cmd, description):
+def _run(cmd, description, cwd=None):
     print(f"\n[{description}] {' '.join(str(c) for c in cmd)}")
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, cwd=cwd)
 
 
 def mask_sequences(input_fasta, output=None, masker="repeatmasker",
-                   species=None, threads=1, executable=None):
+                   species=None, threads=1, executable=None, library=None):
     """Repeat/low-complexity masking. Returns path to the masked FASTA.
 
     `executable` optionally overrides the path to RepeatMasker/dust.
+    `library` is a custom RepeatMasker library FASTA (-lib). It takes precedence
+    over `species` when both are given, since a species-specific library built
+    e.g. by RepeatModeler is the recommended source of truth.
     """
     masker = masker.lower()
     if masker == "repeatmasker":
         binary = _require_tool("RepeatMasker", executable)
         cmd = [binary, "-pa", str(threads)]
-        if species:
+        if library:
+            cmd += ["-lib", str(library)]
+            if species:
+                print("[mask:RepeatMasker] both --lib and --species given; using --lib")
+        elif species:
             cmd += ["-species", species]
         cmd.append(str(input_fasta))
         _run(cmd, "mask:RepeatMasker")
@@ -473,6 +482,43 @@ def mask_sequences(input_fasta, output=None, masker="repeatmasker",
         return out
     else:
         raise ValueError(f"Unknown masker '{masker}' (expected 'repeatmasker' or 'dust')")
+
+
+def model_repeats(genome_fasta, output_dir, name=None, threads=1, ltr_struct=True,
+                  repeatmodeler_executable=None, builddatabase_executable=None):
+    """
+    Build a species-specific repeat library with RepeatModeler.
+
+    Runs `BuildDatabase` then `RepeatModeler` inside `output_dir` so all their
+    intermediate files (`RM_*/`, BLAST DB) stay co-located with the resulting
+    `<name>-families.fa` library. That FASTA is what you pass to
+    `mask_sequences(..., library=...)` (RepeatMasker's -lib).
+
+    Long-running: typically hours to days for a plant genome. Designed to be
+    run once per species, not on every prepare invocation.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    db_name = name or Path(genome_fasta).stem
+
+    bd = _require_tool("BuildDatabase", builddatabase_executable)
+    rm = _require_tool("RepeatModeler", repeatmodeler_executable)
+
+    genome_abs = os.path.abspath(str(genome_fasta))
+    _run([bd, "-name", db_name, genome_abs],
+         "model-repeats:BuildDatabase", cwd=str(output_dir))
+
+    cmd = [rm, "-database", db_name, "-threads", str(threads)]
+    if ltr_struct:
+        cmd.append("-LTRStruct")
+    _run(cmd, "model-repeats:RepeatModeler", cwd=str(output_dir))
+
+    library = output_dir / f"{db_name}-families.fa"
+    print(f"[model-repeats] custom library written -> {library}")
+    if not library.exists():
+        print(f"[model-repeats] WARNING: expected {library} was not produced; "
+              "check the RepeatModeler log for errors.")
+    return str(library)
 
 
 def build_background(input_fasta, output="background.txt", order=1, executable=None):
@@ -577,9 +623,26 @@ def build_parser():
     p.add_argument("--output", "-o", help="Output masked FASTA path")
     p.add_argument("--masker", choices=["repeatmasker", "dust"], default="repeatmasker")
     p.add_argument("--species", help="Species for RepeatMasker")
+    p.add_argument("--lib", dest="library",
+                   help="Custom RepeatMasker library FASTA (-lib); recommended for "
+                        "non-model species. Takes precedence over --species.")
     p.add_argument("--threads", type=int, default=1)
     p.add_argument("--masker-path", dest="executable",
                    help="Path to the RepeatMasker/dust executable (overrides PATH lookup)")
+
+    p = sub.add_parser("model-repeats",
+                       help="Build a species-specific RepeatMasker library with RepeatModeler")
+    p.add_argument("genome_fasta")
+    p.add_argument("--output-dir", "-o", required=True,
+                   help="Directory for the BLAST database and the resulting <name>-families.fa library")
+    p.add_argument("--name", help="Database name (default: stem of the genome FASTA filename)")
+    p.add_argument("--threads", type=int, default=1)
+    p.add_argument("--no-ltr-struct", action="store_true",
+                   help="Disable RepeatModeler's -LTRStruct stage (faster but misses LTR families)")
+    p.add_argument("--repeatmodeler-path", dest="repeatmodeler_executable",
+                   help="Path to the RepeatModeler executable (overrides PATH lookup)")
+    p.add_argument("--builddatabase-path", dest="builddatabase_executable",
+                   help="Path to the BuildDatabase executable (overrides PATH lookup)")
 
     p = sub.add_parser("background", help="Markov background model")
     p.add_argument("input_fasta")
@@ -644,7 +707,13 @@ def main(argv=None):
     elif args.command == "mask":
         mask_sequences(args.input_fasta, output=args.output, masker=args.masker,
                        species=args.species, threads=args.threads,
-                       executable=args.executable)
+                       executable=args.executable, library=args.library)
+    elif args.command == "model-repeats":
+        model_repeats(args.genome_fasta, args.output_dir,
+                      name=args.name, threads=args.threads,
+                      ltr_struct=not args.no_ltr_struct,
+                      repeatmodeler_executable=args.repeatmodeler_executable,
+                      builddatabase_executable=args.builddatabase_executable)
     elif args.command == "background":
         build_background(args.input_fasta, output=args.output, order=args.order,
                          executable=args.executable)

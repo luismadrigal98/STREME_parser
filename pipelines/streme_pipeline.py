@@ -28,9 +28,13 @@ def read_genome_manifest(manifest_path):
     Parse a tab-separated manifest of genome/annotation pairs.
 
     Required columns: genome, fasta, annotation
-    Optional columns: expression, chromosomes, contig_pattern
-    (chromosomes / contig_pattern give per-genome control over which sequences
-    are used, overriding the run-wide --chromosomes / --contig-pattern flags.)
+    Optional columns: expression, chromosomes, contig_pattern, lib, species
+    (`chromosomes`/`contig_pattern` are per-genome sequence filters that
+    override the run-wide --chromosomes/--contig-pattern; `lib` and `species`
+    give per-genome RepeatMasker library / species choices that override
+    --mask-lib / --species. `lib` takes precedence over `species` when both
+    end up set, since a species-specific library — e.g. one built by
+    `model-repeats` (RepeatModeler) — is preferred for non-model organisms.)
     """
     def opt(row, cols, name):
         return (row[cols[name]].strip()
@@ -56,6 +60,8 @@ def read_genome_manifest(manifest_path):
                 "expression": opt(row, cols, "expression"),
                 "chromosomes": opt(row, cols, "chromosomes"),
                 "contig_pattern": opt(row, cols, "contig_pattern"),
+                "lib": opt(row, cols, "lib"),
+                "species": opt(row, cols, "species"),
             })
     if not specs:
         raise ValueError(f"No genome rows found in manifest {manifest_path}")
@@ -104,11 +110,15 @@ def prepare_one_genome(spec, opts):
         streme_input = promoters
 
         if opts["mask"] != "none":
+            # Per-genome RepeatMasker library / species override the run-wide flags
+            # (the wrapper prefers library over species when both are set).
+            genome_lib = spec.get("lib") or opts["mask_lib"]
+            genome_species = spec.get("species") or opts["species"]
             masked = genome_prep.mask_sequences(
                 str(streme_input),
                 output=str(work_dir / f"{genome}_promoters.masked"),
-                masker=opts["mask"], species=opts["species"], threads=opts["threads"],
-                executable=opts["masker_path"],
+                masker=opts["mask"], species=genome_species, threads=opts["threads"],
+                executable=opts["masker_path"], library=genome_lib,
             )
             result["steps"]["masked"] = masked
             streme_input = Path(masked)
@@ -172,6 +182,7 @@ def run_prepare(args):
             "genome": args.genome, "fasta": args.fasta,
             "annotation": args.annotation, "expression": args.expression,
             "chromosomes": None, "contig_pattern": None,
+            "lib": None, "species": None,
         }]
 
     opts = {
@@ -180,7 +191,7 @@ def run_prepare(args):
         "feature_type": args.feature_type, "avoid_overlap": args.avoid_overlap,
         "min_length": args.min_length,
         "chromosomes": args.chromosomes, "contig_pattern": args.contig_pattern,
-        "mask": args.mask, "species": args.species,
+        "mask": args.mask, "species": args.species, "mask_lib": args.mask_lib,
         "masker_path": args.masker_path, "markov_path": args.fasta_get_markov_path,
         "streme_path": args.streme_path,
         "run_fimo": args.run_fimo, "fimo_thresh": args.fimo_thresh,
@@ -467,7 +478,11 @@ Manifest format (tab-separated, header required):
     # Masking / background / STREME
     prepare_parser.add_argument('--mask', choices=['none', 'repeatmasker', 'dust'],
                                 default='repeatmasker', help='Masking step (default: repeatmasker)')
-    prepare_parser.add_argument('--species', help='Species for RepeatMasker')
+    prepare_parser.add_argument('--species', help='Species for RepeatMasker (Dfam library lookup)')
+    prepare_parser.add_argument('--mask-lib',
+                                help='Custom RepeatMasker library FASTA (-lib); recommended for '
+                                     'non-model organisms. Build one once with the `model-repeats` '
+                                     'subcommand. Per-genome overrides via the manifest `lib` column.')
     prepare_parser.add_argument('--masker-path',
                                 help='Path to the RepeatMasker/dust executable (overrides PATH lookup)')
     prepare_parser.add_argument('--fasta-get-markov-path',
@@ -617,6 +632,9 @@ file's embedded background).
     full_parser.add_argument('--mask', choices=['none', 'repeatmasker', 'dust'], default='repeatmasker',
                             help='Masking step when --manifest is used (default: repeatmasker)')
     full_parser.add_argument('--species', help='Species for RepeatMasker when --manifest is used')
+    full_parser.add_argument('--mask-lib',
+                            help='Custom RepeatMasker library FASTA when --manifest is used '
+                                 '(per-genome override via manifest `lib` column; takes precedence over --species)')
     full_parser.add_argument('--chromosomes',
                             help='Restrict promoters to these sequences when --manifest is used '
                                  '(comma-separated names or a file; per-genome overrides via manifest)')
@@ -720,7 +738,7 @@ file's embedded background).
                 upstream=args.upstream, downstream=0, feature_type='gene',
                 avoid_overlap=False, min_length=1,
                 chromosomes=args.chromosomes, contig_pattern=args.contig_pattern,
-                mask=args.mask, species=args.species,
+                mask=args.mask, species=args.species, mask_lib=args.mask_lib,
                 masker_path=args.masker_path,
                 fasta_get_markov_path=args.fasta_get_markov_path,
                 streme_path=args.streme_path,
