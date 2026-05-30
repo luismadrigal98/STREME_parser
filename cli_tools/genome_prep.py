@@ -11,6 +11,8 @@ Subcommands:
   model-repeats      One-time: build a species-specific RepeatMasker library
                      with RepeatModeler (BuildDatabase + RepeatModeler)
   mask               Repeat/low-complexity masking (RepeatMasker or dust)
+  trf                Tandem Repeats Finder masking (catches (AT)n etc. that
+                     TE libraries miss; commonly chained after `mask`)
   background         Markov background model (fasta-get-markov)
   run-streme         De novo motif discovery (STREME)
   run-fimo           Motif scan (FIMO) — locate STREME motif hits at controlled p/q
@@ -442,9 +444,9 @@ def _require_tool(tool, executable=None):
     return path
 
 
-def _run(cmd, description, cwd=None):
+def _run(cmd, description, cwd=None, check=True):
     print(f"\n[{description}] {' '.join(str(c) for c in cmd)}")
-    subprocess.run(cmd, check=True, cwd=cwd)
+    subprocess.run(cmd, check=check, cwd=cwd)
 
 
 def mask_sequences(input_fasta, output=None, masker="repeatmasker",
@@ -496,6 +498,42 @@ def mask_sequences(input_fasta, output=None, masker="repeatmasker",
         return out
     else:
         raise ValueError(f"Unknown masker '{masker}' (expected 'repeatmasker' or 'dust')")
+
+
+def run_trf(input_fasta, output=None, match=2, mismatch=7, delta=7,
+            pm=80, pi=10, minscore=50, maxperiod=500, executable=None):
+    """
+    Tandem Repeats Finder masking (soft-masks tandem repeats — (AT)n, (GAA)n
+    etc. — that RepeatMasker libraries typically miss). Returns the masked
+    FASTA path.
+
+    TRF deliberately exits with a non-zero status (the number of parameter
+    sets it processed), so the exit code is ignored and success is verified
+    by the presence of the expected `<input>.<params>.mask` output file. The
+    default parameters `2 7 7 80 10 50 500` are TRF's standard recommended set.
+    """
+    binary = _require_tool("trf", executable)
+    input_path = Path(input_fasta).resolve()
+    suffix = f".{match}.{mismatch}.{delta}.{pm}.{pi}.{minscore}.{maxperiod}.mask"
+    produced = input_path.parent / (input_path.name + suffix)
+
+    cmd = [binary, str(input_path), str(match), str(mismatch), str(delta),
+           str(pm), str(pi), str(minscore), str(maxperiod), "-m", "-h", "-d"]
+    # TRF writes its outputs (.dat, .mask, .html) into CWD, so run from the
+    # input file's directory and let it scatter sidecar files there.
+    _run(cmd, "mask:TRF", cwd=str(input_path.parent), check=False)
+
+    if not produced.exists():
+        raise FileNotFoundError(
+            f"TRF did not produce expected mask file: {produced}. "
+            f"Verify trf ran (check stderr) and the input FASTA is non-empty."
+        )
+    if output and str(produced) != str(output):
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(produced, output)
+        produced = Path(output)
+    print(f"[mask:TRF] wrote {produced}")
+    return str(produced)
 
 
 def model_repeats(genome_fasta, output_dir, name=None, threads=1, ltr_struct=True,
@@ -687,6 +725,19 @@ def build_parser():
     p.add_argument("--builddatabase-path", dest="builddatabase_executable",
                    help="Path to the BuildDatabase executable (overrides PATH lookup)")
 
+    p = sub.add_parser("trf", help="Tandem Repeats Finder masking (chains nicely after `mask`)")
+    p.add_argument("input_fasta")
+    p.add_argument("--output", "-o", help="Output masked FASTA path")
+    p.add_argument("--match", type=int, default=2)
+    p.add_argument("--mismatch", type=int, default=7)
+    p.add_argument("--delta", type=int, default=7)
+    p.add_argument("--pm", type=int, default=80, help="Match probability (default: 80)")
+    p.add_argument("--pi", type=int, default=10, help="Indel probability (default: 10)")
+    p.add_argument("--minscore", type=int, default=50)
+    p.add_argument("--maxperiod", type=int, default=500)
+    p.add_argument("--trf-path", dest="executable",
+                   help="Path to the trf executable (overrides PATH lookup)")
+
     p = sub.add_parser("background", help="Markov background model")
     p.add_argument("input_fasta")
     p.add_argument("--output", "-o", default="background.txt")
@@ -757,6 +808,11 @@ def main(argv=None):
                       ltr_struct=not args.no_ltr_struct, legacy=args.legacy,
                       repeatmodeler_executable=args.repeatmodeler_executable,
                       builddatabase_executable=args.builddatabase_executable)
+    elif args.command == "trf":
+        run_trf(args.input_fasta, output=args.output,
+                match=args.match, mismatch=args.mismatch, delta=args.delta,
+                pm=args.pm, pi=args.pi, minscore=args.minscore,
+                maxperiod=args.maxperiod, executable=args.executable)
     elif args.command == "background":
         build_background(args.input_fasta, output=args.output, order=args.order,
                          executable=args.executable)

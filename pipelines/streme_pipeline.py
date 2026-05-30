@@ -123,6 +123,27 @@ def prepare_one_genome(spec, opts):
             result["steps"]["masked"] = masked
             streme_input = Path(masked)
 
+        # Optional chained masking for simple-sequence / tandem repeats that
+        # primary repeat libraries miss (the typical (AT)n / (GAA)n problem).
+        extra = (opts["extra_mask"] or "none").lower()
+        if extra in ("dust", "both"):
+            dusted = genome_prep.mask_sequences(
+                str(streme_input),
+                output=str(work_dir / f"{genome}_promoters.masked.dust"),
+                masker="dust", threads=opts["threads"],
+                executable=opts["masker_path"],
+            )
+            result["steps"]["extra_mask_dust"] = dusted
+            streme_input = Path(dusted)
+        if extra in ("trf", "both"):
+            trfed = genome_prep.run_trf(
+                str(streme_input),
+                output=str(work_dir / f"{genome}_promoters.masked.trf"),
+                executable=opts["trf_path"],
+            )
+            result["steps"]["extra_mask_trf"] = trfed
+            streme_input = Path(trfed)
+
         background = None
         if opts["background"]:
             background = genome_prep.build_background(
@@ -192,6 +213,7 @@ def run_prepare(args):
         "min_length": args.min_length,
         "chromosomes": args.chromosomes, "contig_pattern": args.contig_pattern,
         "mask": args.mask, "species": args.species, "mask_lib": args.mask_lib,
+        "extra_mask": args.extra_mask, "trf_path": args.trf_path,
         "masker_path": args.masker_path, "markov_path": args.fasta_get_markov_path,
         "streme_path": args.streme_path,
         "run_fimo": args.run_fimo, "fimo_thresh": args.fimo_thresh,
@@ -483,6 +505,13 @@ Manifest format (tab-separated, header required):
                                 help='Custom RepeatMasker library FASTA (-lib); recommended for '
                                      'non-model organisms. Build one once with the `model-repeats` '
                                      'subcommand. Per-genome overrides via the manifest `lib` column.')
+    prepare_parser.add_argument('--extra-mask', choices=['none', 'dust', 'trf', 'both'],
+                                default='none',
+                                help='After the primary masker, chain dust and/or Tandem Repeats '
+                                     'Finder (TRF) to catch (AT)n / SSR tracts a TE library misses. '
+                                     '"both" runs dust then trf in sequence (default: none).')
+    prepare_parser.add_argument('--trf-path',
+                                help='Path to the trf executable (overrides PATH lookup)')
     prepare_parser.add_argument('--masker-path',
                                 help='Path to the RepeatMasker/dust executable (overrides PATH lookup)')
     prepare_parser.add_argument('--fasta-get-markov-path',
@@ -635,6 +664,10 @@ file's embedded background).
     full_parser.add_argument('--mask-lib',
                             help='Custom RepeatMasker library FASTA when --manifest is used '
                                  '(per-genome override via manifest `lib` column; takes precedence over --species)')
+    full_parser.add_argument('--extra-mask', choices=['none', 'dust', 'trf', 'both'],
+                            default='none',
+                            help='Chain dust/TRF after the primary masker when --manifest is used')
+    full_parser.add_argument('--trf-path', help='Path to the trf executable when --manifest is used')
     full_parser.add_argument('--chromosomes',
                             help='Restrict promoters to these sequences when --manifest is used '
                                  '(comma-separated names or a file; per-genome overrides via manifest)')
@@ -739,6 +772,7 @@ file's embedded background).
                 avoid_overlap=False, min_length=1,
                 chromosomes=args.chromosomes, contig_pattern=args.contig_pattern,
                 mask=args.mask, species=args.species, mask_lib=args.mask_lib,
+                extra_mask=args.extra_mask, trf_path=args.trf_path,
                 masker_path=args.masker_path,
                 fasta_get_markov_path=args.fasta_get_markov_path,
                 streme_path=args.streme_path,

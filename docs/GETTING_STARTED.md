@@ -92,6 +92,8 @@ streme-parser prepare --genome P_eatonii --fasta ... --annotation ... \
 
 For multi-genome runs set the library per row via the manifest `lib` column. `lib` overrides `--mask-lib`, and `lib` takes precedence over `species` when both are present for a genome.
 
+**Tandem repeats / SSRs.** RepeatMasker libraries cover TEs but not simple-sequence repeats; the leftover `(AT)n`, `(GAA)n`, etc. tracts in plant promoters routinely dominate STREME output as spurious AT-rich motifs. Chain Tandem Repeats Finder (`bioconda::trf`) after the primary masker with `--extra-mask trf` (or `dust`, or `both` to chain dust then TRF). The pipeline writes `<genome>_promoters.masked` → `.masked.dust` → `.masked.trf`, and STREME reads the final file. Use `--trf-path` if `trf` isn't on PATH.
+
 ### `scan` - FIMO motif scan (STREME → FIMO)
 
 STREME discovers motifs *de novo*; FIMO then locates each motif's hits in your sequences at a controlled p- or q-value. Run inline as part of `prepare`, or as a standalone step against an existing `prepared/` tree:

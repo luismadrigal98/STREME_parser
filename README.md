@@ -149,6 +149,15 @@ For multi-genome runs, set the library per row in the manifest (`lib` column) in
 
 If you're on **RepeatModeler 1.x** (`-pa` instead of `-threads`, no `-LTRStruct`), add `--legacy`. The wrapper switches to `-pa N -engine ncbi`, drops `-LTRStruct`, and locates the library at `RM_*/consensi.fa.classified` — that path is what to pass as `--mask-lib`.
 
+**Tandem repeats / SSRs (the `(AT)n` problem).** Custom RepeatMasker libraries cover TEs but not simple-sequence repeats, which are the dominant source of spurious AT-rich STREME motifs in plant promoters. Chain Tandem Repeats Finder (`bioconda::trf`) and/or dust after the primary masker with `--extra-mask {dust,trf,both}`:
+
+```bash
+streme-parser prepare ... --mask repeatmasker --mask-lib ... \
+  --extra-mask both    # runs dust then TRF on the RepeatMasker output
+```
+
+The chain produces `<genome>_promoters.masked` → `.masked.dust` → `.masked.trf`; STREME reads the final file. Point at the TRF binary explicitly with `--trf-path` if it isn't on PATH. TRF deliberately returns a non-zero exit status (number of parameter sets processed); the wrapper handles that and verifies success by the expected output file.
+
 **Restricting to chromosomes:** assemblies often mix assembled chromosomes with scaffolds, under varying names (`PeChr1…`, `Chr1`, `chr01`, scaffolds like `JBCEGF010000009.1`). Limit extraction to the sequences you want with either `--chromosomes` (an explicit allowlist — a comma list or a file with one name per line) or `--contig-pattern` (a regex); a feature is kept only if it passes both. Because naming differs per genome, these can also be set **per genome** in the manifest via `chromosomes` / `contig_pattern` columns, which override the run-wide flags for that row.
 
 ```bash

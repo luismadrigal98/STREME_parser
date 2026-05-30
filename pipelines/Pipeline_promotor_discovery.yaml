@@ -69,6 +69,10 @@ masking:
                              #   Build one once with `genome_prep.py model-repeats`
                              #   (RepeatModeler). Takes precedence over species when both set.
                              #   Per-genome overrides via the manifest `lib` column.
+  extra_mask: "none"         # --extra-mask: chain dust/TRF after the primary masker
+                             #   (none | dust | trf | both). Use this when STREME finds
+                             #   AT-rich / SSR motifs that TE libraries don't cover.
+  trf_path: null             # --trf-path: explicit Tandem Repeats Finder path (else PATH)
   executable_path: null      # --masker-path: explicit RepeatMasker/dust path (else PATH)
   notes: >
     dust is faster but aggressive and can remove legitimate AT-rich promoter
