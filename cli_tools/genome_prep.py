@@ -16,6 +16,8 @@ Subcommands:
   background         Markov background model (fasta-get-markov)
   run-streme         De novo motif discovery (STREME)
   run-fimo           Motif scan (FIMO) — locate STREME motif hits at controlled p/q
+  run-tomtom         Motif annotation (TOMTOM) — match discovered motifs to a
+                     reference TF database (PlantTFDB / JASPAR plants / CIS-BP)
 
 The promoter extractor is pure standard library (with an optional pyfaidx
 speed-up) so it works on any machine without external bioinformatics tools.
@@ -609,6 +611,31 @@ def build_background(input_fasta, output="background.txt", order=1, executable=N
     return output
 
 
+def run_tomtom(query_motifs, target_db, output_dir, thresh=0.1,
+               evalue=False, no_ssc=False, min_overlap=5, dist="pearson",
+               executable=None):
+    """
+    TOMTOM motif-vs-database comparison: match query motifs (typically
+    streme.txt) against a reference motif database (PlantTFDB, JASPAR plants,
+    CIS-BP, ...) and report putative TF assignments at controlled significance.
+
+    `thresh` defaults to 0.1 (q-value). Set `evalue=True` to interpret it as
+    an E-value cutoff instead. `dist` selects the column-similarity metric:
+    pearson (default), ed, kullback, sandelin, or allr.
+    `executable` overrides the path to the tomtom binary.
+    """
+    binary = _require_tool("tomtom", executable)
+    cmd = [binary, "-oc", str(output_dir), "-thresh", str(thresh),
+           "-min-overlap", str(min_overlap), "-dist", dist]
+    if evalue:
+        cmd.append("-evalue")
+    if no_ssc:
+        cmd.append("-no-ssc")
+    cmd += [str(query_motifs), str(target_db)]
+    _run(cmd, "run-tomtom")
+    return str(output_dir)
+
+
 def run_fimo(motif_file, sequence_file, output_dir, thresh=1e-4,
              qv_thresh=False, no_qvalue=False, max_strand=False,
              parse_genomic_coord=False, bgfile=None, motif=None,
@@ -757,6 +784,27 @@ def build_parser():
     p.add_argument("--streme-path", dest="executable",
                    help="Path to the streme executable (overrides PATH lookup)")
 
+    p = sub.add_parser("run-tomtom",
+                       help="TOMTOM motif-vs-database comparison "
+                            "(matches STREME motifs to reference TF PWMs)")
+    p.add_argument("query_motifs", help="Query motifs (MEME format, e.g. streme.txt)")
+    p.add_argument("target_db", help="Target motif database (MEME format; e.g. PlantTFDB Ath)")
+    p.add_argument("--output-dir", "-o", required=True, help="TOMTOM output directory (-oc)")
+    p.add_argument("--thresh", type=float, default=0.1,
+                   help="Significance threshold (q-value by default; E-value with --evalue) "
+                        "(default: 0.1)")
+    p.add_argument("--evalue", action="store_true",
+                   help="Interpret --thresh as an E-value cutoff instead of a q-value")
+    p.add_argument("--no-ssc", action="store_true",
+                   help="Disable small-sample correction")
+    p.add_argument("--min-overlap", type=int, default=5,
+                   help="Minimum overlap between query and target columns (default: 5)")
+    p.add_argument("--dist", choices=["pearson", "ed", "kullback", "sandelin", "allr"],
+                   default="pearson",
+                   help="Column-similarity metric (default: pearson)")
+    p.add_argument("--tomtom-path", dest="executable",
+                   help="Path to the tomtom executable (overrides PATH lookup)")
+
     p = sub.add_parser("run-fimo", help="Run FIMO motif scan (typically with STREME motifs)")
     p.add_argument("motif_file", help="MEME-format motif file (e.g. streme.txt from STREME output)")
     p.add_argument("sequence_file", help="FASTA of sequences to scan")
@@ -820,6 +868,11 @@ def main(argv=None):
         run_streme(args.input_fasta, args.output_dir, nmotifs=args.nmotifs,
                    minw=args.minw, maxw=args.maxw, thresh=args.thresh,
                    background=args.background, threads=args.threads,
+                   executable=args.executable)
+    elif args.command == "run-tomtom":
+        run_tomtom(args.query_motifs, args.target_db, args.output_dir,
+                   thresh=args.thresh, evalue=args.evalue, no_ssc=args.no_ssc,
+                   min_overlap=args.min_overlap, dist=args.dist,
                    executable=args.executable)
     elif args.command == "run-fimo":
         run_fimo(args.motif_file, args.sequence_file, args.output_dir,

@@ -180,6 +180,23 @@ def prepare_one_genome(spec, opts):
                     executable=opts["fimo_path"],
                 )
                 result["steps"]["fimo"] = str(fimo_dir)
+
+            if opts["run_tomtom"]:
+                motif_file = streme_dir / "streme.txt"
+                if not motif_file.exists():
+                    raise FileNotFoundError(
+                        f"TOMTOM requested but STREME motif file not found: {motif_file}"
+                    )
+                if not opts["tomtom_db"]:
+                    raise ValueError("--run-tomtom requires --tomtom-db <motif database>")
+                tomtom_dir = out_root / f"tomtom_{genome}"
+                genome_prep.run_tomtom(
+                    str(motif_file), opts["tomtom_db"], str(tomtom_dir),
+                    thresh=opts["tomtom_thresh"], evalue=opts["tomtom_evalue"],
+                    no_ssc=opts["tomtom_no_ssc"], min_overlap=opts["tomtom_min_overlap"],
+                    dist=opts["tomtom_dist"], executable=opts["tomtom_path"],
+                )
+                result["steps"]["tomtom"] = str(tomtom_dir)
     except Exception as exc:  # noqa: BLE001 - surface per-genome failure to caller
         result["status"] = "failed"
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -192,6 +209,18 @@ def run_prepare(args):
         print("Error: --run-fimo requires STREME output; remove --no-streme or run the "
               "'scan' subcommand against an existing STREME directory.")
         return False
+
+    if args.run_tomtom:
+        if args.no_streme:
+            print("Error: --run-tomtom requires STREME output; remove --no-streme or run "
+                  "the 'annotate' subcommand against an existing STREME directory.")
+            return False
+        if not args.tomtom_db:
+            print("Error: --run-tomtom requires --tomtom-db <reference motif database>")
+            return False
+        if not Path(args.tomtom_db).is_file():
+            print(f"Error: --tomtom-db file not found: {args.tomtom_db}")
+            return False
 
     if args.manifest:
         specs = read_genome_manifest(args.manifest)
@@ -220,6 +249,11 @@ def run_prepare(args):
         "fimo_qv_thresh": args.fimo_qv_thresh, "fimo_no_qvalue": args.fimo_no_qvalue,
         "fimo_max_strand": args.fimo_max_strand, "fimo_motif": args.fimo_motif,
         "fimo_path": args.fimo_path,
+        "run_tomtom": args.run_tomtom, "tomtom_db": args.tomtom_db,
+        "tomtom_thresh": args.tomtom_thresh, "tomtom_evalue": args.tomtom_evalue,
+        "tomtom_no_ssc": args.tomtom_no_ssc,
+        "tomtom_min_overlap": args.tomtom_min_overlap,
+        "tomtom_dist": args.tomtom_dist, "tomtom_path": args.tomtom_path,
         "background": not args.no_background, "background_order": args.background_order,
         "run_streme": not args.no_streme,
         "nmotifs": args.nmotifs, "minw": args.minw, "maxw": args.maxw, "thresh": args.thresh,
@@ -393,6 +427,103 @@ def run_scan(args):
     return ok == len(results)
 
 
+def annotate_one_genome(spec, opts):
+    """
+    Run TOMTOM for one genome (worker used by run_annotate).
+
+    spec: {"genome", "motif_file"}
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "cli_tools"))
+    import genome_prep
+
+    genome = spec["genome"]
+    out_root = Path(opts["output"])
+    out_root.mkdir(parents=True, exist_ok=True)
+    tomtom_dir = out_root / f"tomtom_{genome}"
+
+    result = {"genome": genome, "status": "ok", "output": str(tomtom_dir), "error": None}
+    try:
+        genome_prep.run_tomtom(
+            spec["motif_file"], opts["target_db"], str(tomtom_dir),
+            thresh=opts["thresh"], evalue=opts["evalue"], no_ssc=opts["no_ssc"],
+            min_overlap=opts["min_overlap"], dist=opts["dist"],
+            executable=opts["tomtom_path"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        result["status"] = "failed"
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def run_annotate(args):
+    """TOMTOM-match every prepared genome's STREME motifs against a TF database."""
+    prepared = Path(args.prepared_dir)
+    if not prepared.is_dir():
+        print(f"Error: prepared directory not found: {prepared}")
+        return False
+    if not Path(args.target_db).is_file():
+        print(f"Error: target motif database not found: {args.target_db}")
+        return False
+
+    target = set(args.genomes.split(",")) if args.genomes else None
+    specs = []
+    missing = []
+    for entry in sorted(prepared.iterdir()):
+        if not (entry.is_dir() and entry.name.startswith("streme_")):
+            continue
+        genome = entry.name[len("streme_"):]
+        if target and genome not in target:
+            continue
+        motif_file = entry / "streme.txt"
+        if not motif_file.exists():
+            missing.append(f"{entry.name}: no streme.txt")
+            continue
+        specs.append({"genome": genome, "motif_file": str(motif_file)})
+
+    if not specs:
+        print("Error: no annotate-able genomes found in", args.prepared_dir)
+        for m in missing:
+            print(" -", m)
+        return False
+
+    output_root = args.output or args.prepared_dir
+    opts = {
+        "output": output_root, "target_db": args.target_db,
+        "thresh": args.thresh, "evalue": args.evalue, "no_ssc": args.no_ssc,
+        "min_overlap": args.min_overlap, "dist": args.dist,
+        "tomtom_path": args.tomtom_path,
+    }
+    Path(output_root).mkdir(parents=True, exist_ok=True)
+
+    print(f"\n=== ANNOTATE: {len(specs)} genome(s) -> {output_root} ===")
+    print(f"Target DB: {args.target_db}")
+    for s in specs:
+        print(f"  - {s['genome']}: {s['motif_file']}")
+    for m in missing:
+        print(f"  (skipped) {m}")
+
+    results = []
+    if args.jobs > 1 and len(specs) > 1:
+        with ProcessPoolExecutor(max_workers=args.jobs) as pool:
+            futures = {pool.submit(annotate_one_genome, s, opts): s["genome"] for s in specs}
+            for fut in as_completed(futures):
+                results.append(fut.result())
+    else:
+        for s in specs:
+            results.append(annotate_one_genome(s, opts))
+
+    print("\n=== ANNOTATE SUMMARY ===")
+    ok = 0
+    for r in sorted(results, key=lambda x: x["genome"]):
+        if r["status"] == "ok":
+            ok += 1
+            print(f"  ✅ {r['genome']}: {r['output']}")
+        else:
+            print(f"  ❌ {r['genome']}: {r['error']}")
+    print(f"\n{ok}/{len(results)} genome(s) annotated successfully.")
+    return ok == len(results)
+
+
 def run_command(cmd, description):
     """Run a command and handle errors"""
     print(f"\n{description}")
@@ -535,6 +666,28 @@ Manifest format (tab-separated, header required):
                                 help='FIMO: restrict scan to a specific motif ID')
     prepare_parser.add_argument('--fimo-path',
                                 help='Path to the fimo executable (overrides PATH lookup)')
+    # Optional inline TOMTOM annotation against a reference TF motif database
+    prepare_parser.add_argument('--run-tomtom', action='store_true',
+                                help='After STREME, run TOMTOM to match discovered motifs '
+                                     'to a reference TF database (writes tomtom_<genome>/)')
+    prepare_parser.add_argument('--tomtom-db',
+                                help='Reference motif database for TOMTOM (MEME format), '
+                                     'e.g. PlantTFDB Arabidopsis, JASPAR plants, CIS-BP')
+    prepare_parser.add_argument('--tomtom-thresh', type=float, default=0.1,
+                                help='TOMTOM significance threshold (q-value by default; '
+                                     'E-value with --tomtom-evalue) (default: 0.1)')
+    prepare_parser.add_argument('--tomtom-evalue', action='store_true',
+                                help='Interpret --tomtom-thresh as an E-value cutoff')
+    prepare_parser.add_argument('--tomtom-no-ssc', action='store_true',
+                                help='Disable TOMTOM small-sample correction')
+    prepare_parser.add_argument('--tomtom-min-overlap', type=int, default=5,
+                                help='TOMTOM minimum column overlap (default: 5)')
+    prepare_parser.add_argument('--tomtom-dist',
+                                choices=['pearson', 'ed', 'kullback', 'sandelin', 'allr'],
+                                default='pearson',
+                                help='TOMTOM column-similarity metric (default: pearson)')
+    prepare_parser.add_argument('--tomtom-path',
+                                help='Path to the tomtom executable (overrides PATH lookup)')
     prepare_parser.add_argument('--no-background', action='store_true',
                                 help='Skip the Markov background model step')
     prepare_parser.add_argument('--background-order', type=int, default=1,
@@ -587,6 +740,47 @@ file's embedded background).
                              help='Parse genomic coords from FASTA headers')
     scan_parser.add_argument('--motif', help='Restrict to a specific motif ID')
     scan_parser.add_argument('--fimo-path', help='Path to the fimo executable')
+
+    # Annotate subcommand: TOMTOM every prepared genome's STREME motifs vs a TF database
+    annotate_parser = subparsers.add_parser(
+        'annotate',
+        help='TOMTOM-match every prepared genome\'s STREME motifs to a TF database',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Annotate vs PlantTFDB Arabidopsis (download separately, MEME format)
+  %(prog)s annotate prepared/ --target-db ~/dbs/Ath_TF_binding_motifs.meme --jobs 4
+
+  # E-value cutoff instead of the default q-value
+  %(prog)s annotate prepared/ --target-db <db> --thresh 0.01 --evalue --jobs 4
+
+Common databases (download in MEME format):
+  - PlantTFDB 5.0 (Arabidopsis)
+  - JASPAR plants (https://jaspar.genereg.net/)
+  - CIS-BP (http://cisbp.ccbr.utoronto.ca/)
+        """
+    )
+    annotate_parser.add_argument('prepared_dir', help='Directory produced by `prepare`')
+    annotate_parser.add_argument('--target-db', required=True,
+                                  help='Reference motif database (MEME format)')
+    annotate_parser.add_argument('--output', '-o', help='Output root (default: same as prepared_dir)')
+    annotate_parser.add_argument('--jobs', '-j', type=int, default=1,
+                                  help='Genomes to annotate in parallel (default: 1)')
+    annotate_parser.add_argument('--genomes', help='Comma-separated subset of genomes to annotate')
+    annotate_parser.add_argument('--thresh', type=float, default=0.1,
+                                  help='Significance threshold (q-value by default; '
+                                       'E-value with --evalue) (default: 0.1)')
+    annotate_parser.add_argument('--evalue', action='store_true',
+                                  help='Interpret --thresh as an E-value cutoff')
+    annotate_parser.add_argument('--no-ssc', action='store_true',
+                                  help='Disable small-sample correction')
+    annotate_parser.add_argument('--min-overlap', type=int, default=5,
+                                  help='Minimum column overlap (default: 5)')
+    annotate_parser.add_argument('--dist',
+                                  choices=['pearson', 'ed', 'kullback', 'sandelin', 'allr'],
+                                  default='pearson',
+                                  help='Column-similarity metric (default: pearson)')
+    annotate_parser.add_argument('--tomtom-path', help='Path to the tomtom executable')
 
     # Consolidate subcommand
     consolidate_parser = subparsers.add_parser('consolidate', help='Consolidate STREME motifs')
@@ -698,6 +892,10 @@ file's embedded background).
         success = run_scan(args)
         sys.exit(0 if success else 1)
 
+    elif args.command == 'annotate':
+        success = run_annotate(args)
+        sys.exit(0 if success else 1)
+
     elif args.command == 'consolidate':
         cmd = [
             'python', str(project_root / 'cli_tools' / 'streme_sites_consolidator.py'),
@@ -781,6 +979,9 @@ file's embedded background).
                 run_fimo=False, fimo_thresh=1e-4, fimo_qv_thresh=False,
                 fimo_no_qvalue=False, fimo_max_strand=False, fimo_motif=None,
                 fimo_path=None,
+                run_tomtom=False, tomtom_db=None, tomtom_thresh=0.1,
+                tomtom_evalue=False, tomtom_no_ssc=False,
+                tomtom_min_overlap=5, tomtom_dist='pearson', tomtom_path=None,
             )
             if not run_prepare(prepare_args):
                 print("⚠️  Some genomes failed to prepare; continuing with what succeeded.")

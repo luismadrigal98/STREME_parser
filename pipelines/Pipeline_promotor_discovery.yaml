@@ -152,10 +152,28 @@ expression_analysis:
 # Validation / refinement against external motif databases (optional, manual)
 # ---------------------------------------------------------------------------
 validation:
-  tomtom:
-    threshold: 0.01
   fimo:
     threshold: 0.0001
+
+# ---------------------------------------------------------------------------
+# Phase 3c (optional): Motif annotation with TOMTOM vs a reference TF database.
+#   Inline:     streme_pipeline.py prepare ... --run-tomtom --tomtom-db <db.meme> --tomtom-thresh 0.1
+#   Standalone: streme_pipeline.py annotate <prepared_dir> --target-db <db.meme> --jobs N
+# Per genome TOMTOM matches streme_<genome>/streme.txt against the supplied
+# database and writes tomtom_<genome>/ next to streme_<genome>/.
+# Download the database separately in MEME format — common choices are
+# PlantTFDB 5.0 (Arabidopsis), JASPAR plants, and CIS-BP.
+# ---------------------------------------------------------------------------
+motif_annotation:
+  enabled: false             # --run-tomtom in prepare, or use the `annotate` subcommand
+  tool: "TOMTOM"
+  target_db: null            # --tomtom-db / --target-db: path to a MEME-format motif database
+  thresh: 0.1                # q-value cutoff (or E-value when evalue is true)
+  evalue: false              # interpret thresh as an E-value cutoff
+  no_ssc: false              # disable small-sample correction
+  min_overlap: 5             # minimum column overlap between query and target
+  dist: "pearson"            # pearson | ed | kullback | sandelin | allr
+  executable_path: null      # --tomtom-path: explicit tomtom path (else PATH)
 
 # ---------------------------------------------------------------------------
 # Example manifest (write to genomes.tsv, tab-separated, header required).

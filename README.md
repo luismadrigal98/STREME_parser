@@ -170,6 +170,19 @@ python pipelines/streme_pipeline.py prepare \
 
 Chromosome filtering happens at extraction time (when the annotation's sequence name is still known); if you start from pre-built STREME results it no longer applies, since those are keyed by gene only.
 
+**TOMTOM annotation against a reference TF database.** TOMTOM matches each discovered STREME motif to known TF PWMs (PlantTFDB, JASPAR plants, CIS-BP, …) so the de novo motifs get putative transcription-factor assignments. Inline during `prepare` or as a separate `annotate` pass over an existing `prepared/` tree:
+
+```bash
+# 1) Inline with prepare
+streme-parser prepare ... --run-tomtom --tomtom-db ~/dbs/Ath_TF_binding_motifs.meme \
+  --tomtom-thresh 0.1                  # q-value (default); --tomtom-evalue switches to E-value
+
+# 2) Standalone, parallel across genomes
+streme-parser annotate prepared/ --target-db ~/dbs/Ath_TF_binding_motifs.meme --jobs 4
+```
+
+Both write a `tomtom_<genome>/` directory next to `streme_<genome>/`. The pipeline pre-flight checks the database file before launching any work, so a missing or wrong path fails immediately. Use `--tomtom-path` if `tomtom` isn't on PATH. Common databases (download separately in MEME format): **PlantTFDB 5.0** (best for Arabidopsis), **JASPAR plants**, **CIS-BP**.
+
 **FIMO scan of the STREME motifs.** STREME → FIMO is the canonical MEME-Suite chain: STREME discovers motifs *de novo*; FIMO then locates each motif's hits in your sequences at a controlled p- or q-value. Two ways to run it:
 
 ```bash
@@ -288,8 +301,9 @@ bin/streme-parser full prepared/ expression.tsv --manifest genomes.tsv --jobs 4 
 ```
 
 **Pipeline commands available:**
-- `prepare`: Genomes → promoters → mask → background → STREME (parallel across genomes; optionally also FIMO via `--run-fimo`)
+- `prepare`: Genomes → promoters → mask → background → STREME (parallel across genomes; optionally also FIMO via `--run-fimo` and TOMTOM via `--run-tomtom`)
 - `scan`: FIMO-scan a `prepared/` tree — locate STREME-motif hits per genome at a controlled p/q-value
+- `annotate`: TOMTOM-match each genome's STREME motifs against a reference TF database (PlantTFDB, JASPAR plants, CIS-BP)
 - `consolidate`: Consolidate STREME motifs across genomes
 - `validate`: Validate motif consolidation quality
 - `analyze`: Run motif-expression analysis (absolute or relative)

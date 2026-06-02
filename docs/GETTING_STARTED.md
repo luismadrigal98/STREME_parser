@@ -110,6 +110,17 @@ python3 pipelines/streme_pipeline.py scan prepared/ --jobs 4 \
 
 For each `streme_<genome>/` the scan auto-picks `streme.txt` as the motif file, `<genome>_prep/<genome>_promoters.masked` as the sequence file, and `<genome>_prep/background.txt` as `--bgfile` (falling back to the motifs' embedded background). Override any with `--sequence`/`--bgfile`. Output goes to `fimo_<genome>/`.
 
+### `annotate` - TOMTOM motif vs reference TF database
+
+Matches each genome's STREME motifs against a reference TF PWM database so the de novo motifs get putative TF assignments. Inline via `prepare --run-tomtom --tomtom-db <db>` or standalone:
+
+```bash
+python3 pipelines/streme_pipeline.py annotate prepared/ \
+  --target-db ~/dbs/Ath_TF_binding_motifs.meme --jobs 4 --thresh 0.1
+```
+
+Output: `tomtom_<genome>/` next to each `streme_<genome>/`. Default `--thresh 0.1` is a q-value cutoff; switch to E-value with `--evalue`. Common downloadable databases (MEME format): **PlantTFDB 5.0** (Arabidopsis), **JASPAR plants**, **CIS-BP**. Use `--tomtom-path` if `tomtom` isn't on PATH.
+
 ### `consolidate` - Consolidate STREME Sites
 
 Processes STREME `sites.tsv` files from multiple genomes, consolidates similar motifs, and creates comprehensive regulatory maps.
