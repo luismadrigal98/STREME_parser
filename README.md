@@ -307,7 +307,27 @@ bin/streme-parser full prepared/ expression.tsv --manifest genomes.tsv --jobs 4 
 - `consolidate`: Consolidate STREME motifs across genomes
 - `validate`: Validate motif consolidation quality
 - `analyze`: Run motif-expression analysis (absolute or relative)
+- `network`: Motif co-occurrence network + gene clustering on a consolidated TSV (no expression data needed)
 - `full`: Complete pipeline (optionally prepare first, then consolidate → validate → analyze)
+
+### Exploratory analysis without expression data: `network`
+
+When you don't have expression data — or want to inspect the regulatory landscape independently of it — `network` extracts two complementary views from a consolidated TSV:
+
+1. **Motif co-occurrence network.** All motif pairs are scored by Jaccard, lift, and Fisher one-sided p (BH-corrected). Pairs passing thresholds (`--min-jaccard`, `--min-lift`, `--fdr`) become network edges; connected components are reported as motif *modules* suggesting combinatorial regulation. Exported as **GraphML** (`motif_cooccurrence_network.graphml`) for direct import into Cytoscape or Gephi.
+2. **Gene clustering by motif profile.** Genes are hierarchically clustered on Jaccard distance of their motif presence vectors (average linkage). Per-cluster **motif fingerprints** (Fisher enrichment of each motif within the cluster vs the background, BH-corrected) tell you what regulatory program defines each cluster.
+
+A light **positional summary** per motif (`start_pos` / `relative_position_fraction` distributions) is included for free.
+
+```bash
+streme-parser consolidate prepared_penstemon_eatonii/ --output outputs/consolidated_P_eatonii
+streme-parser validate outputs/consolidated_P_eatonii.tsv
+
+streme-parser network outputs/consolidated_P_eatonii.tsv \
+    --output network_results/ --n-clusters 30
+```
+
+Outputs in the directory: `motif_cooccurrence_edges.tsv`, `motif_cooccurrence_network.graphml`, `motif_modules.tsv`, `gene_clusters.tsv`, `gene_cluster_fingerprints.tsv`, `motif_positional_summary.tsv`, `network_summary.txt`. After joining the motif IDs to TOMTOM matches, the modules become putative TF-cooperativity networks and the cluster fingerprints become per-module TF signatures.
 
 **Expression analysis types:**
 - `--type absolute`: Per-genome analysis (each genome analyzed independently)

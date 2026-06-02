@@ -741,6 +741,41 @@ file's embedded background).
     scan_parser.add_argument('--motif', help='Restrict to a specific motif ID')
     scan_parser.add_argument('--fimo-path', help='Path to the fimo executable')
 
+    # Network subcommand: motif co-occurrence + gene clustering on a consolidated TSV
+    network_parser = subparsers.add_parser(
+        'network',
+        help='Motif co-occurrence network + gene clustering on a consolidated TSV '
+             '(exploratory analysis without expression data)',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Defaults
+  %(prog)s network outputs/consolidated_streme_sites.tsv --output network_results/
+
+  # Tighter network + force 30 gene clusters
+  %(prog)s network outputs/consolidated_streme_sites.tsv -o net/ \\
+      --min-jaccard 0.2 --min-lift 3 --fdr 0.01 --n-clusters 30
+
+Produces: motif_cooccurrence_edges.tsv, motif_cooccurrence_network.graphml
+(import into Cytoscape/Gephi), motif_modules.tsv, gene_clusters.tsv,
+gene_cluster_fingerprints.tsv, motif_positional_summary.tsv.
+        """
+    )
+    network_parser.add_argument('consolidated_file', help='Consolidated STREME sites TSV')
+    network_parser.add_argument('--output', '-o', default='network_results/',
+                                help='Output directory (default: network_results/)')
+    network_parser.add_argument('--min-motif-sites', type=int, default=10)
+    network_parser.add_argument('--min-motifs-per-gene', type=int, default=2)
+    network_parser.add_argument('--max-genes', type=int, default=5000)
+    network_parser.add_argument('--min-jaccard', type=float, default=0.1)
+    network_parser.add_argument('--min-lift', type=float, default=2.0)
+    network_parser.add_argument('--fdr', type=float, default=0.05)
+    network_parser.add_argument('--n-clusters', type=int)
+    network_parser.add_argument('--cluster-distance', type=float, default=0.7)
+    network_parser.add_argument('--skip-cooccurrence', action='store_true')
+    network_parser.add_argument('--skip-clusters', action='store_true')
+    network_parser.add_argument('--seed', type=int, default=42)
+
     # Annotate subcommand: TOMTOM every prepared genome's STREME motifs vs a TF database
     annotate_parser = subparsers.add_parser(
         'annotate',
@@ -894,6 +929,29 @@ Common databases (download in MEME format):
 
     elif args.command == 'annotate':
         success = run_annotate(args)
+        sys.exit(0 if success else 1)
+
+    elif args.command == 'network':
+        cmd = [
+            sys.executable, str(project_root / 'cli_tools' / 'motif_network.py'),
+            args.consolidated_file,
+            '--output', args.output,
+            '--min-motif-sites', str(args.min_motif_sites),
+            '--min-motifs-per-gene', str(args.min_motifs_per_gene),
+            '--max-genes', str(args.max_genes),
+            '--min-jaccard', str(args.min_jaccard),
+            '--min-lift', str(args.min_lift),
+            '--fdr', str(args.fdr),
+            '--cluster-distance', str(args.cluster_distance),
+            '--seed', str(args.seed),
+        ]
+        if args.n_clusters:
+            cmd += ['--n-clusters', str(args.n_clusters)]
+        if args.skip_cooccurrence:
+            cmd.append('--skip-cooccurrence')
+        if args.skip_clusters:
+            cmd.append('--skip-clusters')
+        success = run_command(cmd, "Running motif network + gene clustering")
         sys.exit(0 if success else 1)
 
     elif args.command == 'consolidate':

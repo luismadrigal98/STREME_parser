@@ -121,6 +121,22 @@ python3 pipelines/streme_pipeline.py annotate prepared/ \
 
 Output: `tomtom_<genome>/` next to each `streme_<genome>/`. Default `--thresh 0.1` is a q-value cutoff; switch to E-value with `--evalue`. Common downloadable databases (MEME format): **PlantTFDB 5.0** (Arabidopsis), **JASPAR plants**, **CIS-BP**. Use `--tomtom-path` if `tomtom` isn't on PATH.
 
+### `network` - exploratory analysis without expression data
+
+When you don't have expression data — or want to look at the regulatory landscape independently of it — `network` runs two complementary analyses on a consolidated TSV:
+
+- **Motif co-occurrence network**: motif pairs scored by Jaccard / lift / Fisher one-sided p (BH-corrected); pairs passing thresholds become edges; connected components → motif modules (combinatorial regulation hypotheses). Exported as **GraphML** for Cytoscape / Gephi.
+- **Gene clustering by motif profile**: hierarchical Jaccard / average-linkage clustering of genes; per-cluster motif **fingerprints** (Fisher enrichment vs background) summarise what defines each cluster.
+- **Positional summary**: per-motif distance-from-promoter-start and relative-position distributions.
+
+```bash
+streme-parser consolidate prepared_penstemon_eatonii/ --output outputs/consolidated_P_eatonii
+streme-parser validate  outputs/consolidated_P_eatonii.tsv
+streme-parser network   outputs/consolidated_P_eatonii.tsv --output network_results/ --n-clusters 30
+```
+
+Outputs: `motif_cooccurrence_edges.tsv`, `motif_cooccurrence_network.graphml`, `motif_modules.tsv`, `gene_clusters.tsv`, `gene_cluster_fingerprints.tsv`, `motif_positional_summary.tsv`, `network_summary.txt`. After TOMTOM annotation, the motif IDs in modules/fingerprints can be joined to TF names from `tomtom.tsv` for biological interpretation.
+
 ### `consolidate` - Consolidate STREME Sites
 
 Processes STREME `sites.tsv` files from multiple genomes, consolidates similar motifs, and creates comprehensive regulatory maps.
