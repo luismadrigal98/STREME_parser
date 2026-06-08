@@ -391,6 +391,18 @@ python cli_tools/streme_sites_consolidator.py consolidate prepared/ \
   --output outputs/consolidated_streme_sites
 ```
 
+### Worked example: single-genome end-to-end (Penstemon eatonii)
+
+`pipelines/Pipeline_P_eatonii.yaml` is a concrete worked example of the full pipeline for a single non-model plant genome, including a RepeatModeler-1.x custom library, RepeatMasker + TRF chained masking, order-3 background, STREME → FIMO → TOMTOM (vs PlantTFDB Arabidopsis), consolidate, and motif co-occurrence + gene clustering exploration. Three matching submit scripts chain via SLURM dependencies:
+
+```bash
+RM_JOB=$(sbatch --parsable scripts/submit_rm_P_eatonii.sh)
+PREP_JOB=$(sbatch --parsable --dependency=afterok:$RM_JOB scripts/submit_prepare_P_eatonii.sh)
+sbatch --dependency=afterok:$PREP_JOB scripts/submit_downstream_P_eatonii.sh
+```
+
+`submit_rm_P_eatonii.sh` builds the species-specific library (1-5 days), `submit_prepare_P_eatonii.sh` resolves the library to a stable symlink then runs prepare with STREME + FIMO inline (memory-heavy: 96 GB), and `submit_downstream_P_eatonii.sh` runs TOMTOM + consolidate + validate + network as one short job.
+
 ## Methodology and Statistical Approach
 
 This pipeline implements two complementary approaches for motif-expression analysis:
