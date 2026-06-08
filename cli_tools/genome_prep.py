@@ -553,7 +553,8 @@ def model_repeats(genome_fasta, output_dir, name=None, threads=1, ltr_struct=Tru
       - Default (RepeatModeler 2.x): writes `<name>-families.fa` and uses
         `-threads N` plus `-LTRStruct` (unless `ltr_struct=False`).
       - `legacy=True` (RepeatModeler 1.x): writes the library to
-        `RM_*/consensi.fa.classified` and uses `-pa N` with `-engine ncbi`;
+                `RM_*/consensi.fa` or `RM_*/consensi.fa.classified` and uses `-pa N`
+                with `-engine ncbi`;
         `-LTRStruct` is unavailable in 1.x and is silently dropped.
 
     Long-running: typically hours to days for a plant genome. Designed to be
@@ -581,15 +582,18 @@ def model_repeats(genome_fasta, output_dir, name=None, threads=1, ltr_struct=Tru
             cmd.append("-LTRStruct")
     _run(cmd, "model-repeats:RepeatModeler", cwd=str(output_dir))
 
-    # 2.x writes <name>-families.fa; 1.x writes RM_*/consensi.fa.classified.
+    # 2.x writes <name>-families.fa; 1.x writes RM_*/consensi.fa*.
     families = output_dir / f"{db_name}-families.fa"
     if families.exists():
         library = families
     else:
-        legacy_hits = sorted(output_dir.glob("RM_*/consensi.fa.classified"))
+        legacy_hits = sorted(
+            list(output_dir.glob("RM_*/consensi.fa.classified")) +
+            list(output_dir.glob("RM_*/consensi.fa"))
+        )
         library = legacy_hits[-1] if legacy_hits else families
 
-    if library.exists():
+    if library.exists() and library.stat().st_size > 0:
         print(f"[model-repeats] custom library written -> {library}")
         if legacy and library.name != f"{db_name}-families.fa":
             print(f"[model-repeats] (pass {library} as --mask-lib)")
@@ -597,7 +601,8 @@ def model_repeats(genome_fasta, output_dir, name=None, threads=1, ltr_struct=Tru
     else:
         print(f"[model-repeats] WARNING: no library found under {output_dir} "
               f"(looked for {db_name}-families.fa and RM_*/consensi.fa.classified); "
-              "check the RepeatModeler log for errors.")
+              "check the RepeatModeler log for errors. Zero-byte RepeatModeler "
+              "outputs are treated as failed runs.")
         return None
 
 

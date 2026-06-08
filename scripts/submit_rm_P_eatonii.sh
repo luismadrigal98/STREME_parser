@@ -27,4 +27,4 @@ python /home/l338m483/bin/STREME_parser/cli_tools/genome_prep.py model-repeats \
     --threads "$SLURM_CPUS_PER_TASK" \
     --legacy
 
-echo "Done. Library at: $(ls -t repeats/P_eatonii/RM_*/consensi.fa.classified | head -1)"
+echo "Done. Library at: $(ls -t repeats/P_eatonii/RM_*/consensi.fa.classified repeats/P_eatonii/RM_*/consensi.fa | head -1)"

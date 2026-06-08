@@ -23,9 +23,9 @@ cd /kuhpc/scratch/kelly/l338m483/MEME_Penstemon
 
 # Stage 2: resolve the 1.x repeat library to a stable path the rest of the
 # pipeline can reference without depending on the timestamped RM_<date>/ dir.
-LIB=$(ls -t repeats/P_eatonii/RM_*/consensi.fa.classified 2>/dev/null | head -1)
+LIB=$(ls -t repeats/P_eatonii/RM_*/consensi.fa.classified repeats/P_eatonii/RM_*/consensi.fa 2>/dev/null | head -1)
 if [ -z "${LIB:-}" ] || [ ! -s "$LIB" ]; then
-    echo "ERROR: no consensi.fa.classified found under repeats/P_eatonii/RM_*/" >&2
+    echo "ERROR: no RepeatModeler library found under repeats/P_eatonii/RM_*/" >&2
     echo "       Did the RepeatModeler job finish successfully?" >&2
     exit 1
 fi
