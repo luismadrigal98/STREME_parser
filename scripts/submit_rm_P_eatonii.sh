@@ -14,12 +14,9 @@
 # drops -LTRStruct). The library lands at RM_<timestamp>/consensi.fa.classified;
 # Stage 2 (in scripts/submit_prepare_P_eatonii.sh) symlinks it to a stable path.
 
-set -euo pipefail
 module load conda
 eval "$(conda shell.bash hook)"
-set +u
 conda activate PyR
-set -u
 
 cd /kuhpc/scratch/kelly/l338m483/MEME_Penstemon
 

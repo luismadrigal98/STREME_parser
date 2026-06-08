@@ -15,12 +15,9 @@
 #    → STREME (50 motifs) → FIMO (q ≤ 0.05, max-strand) inline
 # STREME is the heavy step memory-wise (~30-50 GB peak on ~27k 2-kb promoters).
 
-set -euo pipefail
 module load conda
 eval "$(conda shell.bash hook)"
-set +u
 conda activate PyR
-set -u
 
 cd /kuhpc/scratch/kelly/l338m483/MEME_Penstemon
 
