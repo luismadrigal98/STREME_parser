@@ -21,10 +21,18 @@ conda activate PyR
 
 cd /kuhpc/scratch/kelly/l338m483/MEME_Penstemon
 
-# Stage 4: TOMTOM
-sh /home/l338m483/bin/STREME_parser/bin/streme-parser annotate prepared_penstemon_eatonii/ \
-    --target-db databases/Ath_TF_binding_motifs.meme \
-    --thresh 0.1 --jobs 1
+# Create output directories
+mkdir -p outputs network_P_eatonii
+
+# Stage 4: TOMTOM (skip if database not found)
+if [ -f databases/Ath_TF_binding_motifs.meme ]; then
+    sh /home/l338m483/bin/STREME_parser/bin/streme-parser annotate prepared_penstemon_eatonii/ \
+        --target-db databases/Ath_TF_binding_motifs.meme \
+        --thresh 0.1 --jobs 1
+else
+    echo "[TOMTOM] Skipping: database not found at databases/Ath_TF_binding_motifs.meme"
+    echo "         Download PlantTFDB and place it at that path to enable TOMTOM annotation."
+fi
 
 # Stage 5: consolidate + validate
 sh /home/l338m483/bin/STREME_parser/bin/streme-parser consolidate prepared_penstemon_eatonii/ \
