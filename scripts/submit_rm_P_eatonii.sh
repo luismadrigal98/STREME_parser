@@ -17,7 +17,9 @@
 set -euo pipefail
 module load conda
 eval "$(conda shell.bash hook)"
+set +u
 conda activate PyR
+set -u
 
 cd /kuhpc/scratch/kelly/l338m483/MEME_Penstemon
 
