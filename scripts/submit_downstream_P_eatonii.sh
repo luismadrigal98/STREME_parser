@@ -26,7 +26,7 @@ mkdir -p outputs network_P_eatonii
 
 # Stage 4: TOMTOM (skip if database not found)
 if [ -f databases/Ath_TF_binding_motifs.meme ]; then
-    sh /home/l338m483/bin/STREME_parser/bin/streme-parser annotate prepared_penstemon_eatonii/ \
+    bash /home/l338m483/bin/STREME_parser/bin/streme-parser annotate prepared_penstemon_eatonii/ \
         --target-db databases/Ath_TF_binding_motifs.meme \
         --thresh 0.1 --jobs 1
 else
@@ -35,21 +35,28 @@ else
 fi
 
 # Stage 5: consolidate + validate
-sh /home/l338m483/bin/STREME_parser/bin/streme-parser consolidate prepared_penstemon_eatonii/ \
+bash /home/l338m483/bin/STREME_parser/bin/streme-parser consolidate prepared_penstemon_eatonii/ \
     --output outputs/consolidated_P_eatonii \
     --threshold 0.75
 
-sh /home/l338m483/bin/STREME_parser/bin/streme-parser validate outputs/consolidated_P_eatonii.tsv
+bash /home/l338m483/bin/STREME_parser/bin/streme-parser validate outputs/consolidated_P_eatonii.tsv
 
 # Stage 6: motif co-occurrence network + gene clustering
-sh /home/l338m483/bin/STREME_parser/bin/streme-parser network outputs/consolidated_P_eatonii.tsv \
+bash /home/l338m483/bin/STREME_parser/bin/streme-parser network outputs/consolidated_P_eatonii.tsv \
     --output network_P_eatonii/ \
     --min-motif-sites 20 \
     --min-jaccard 0.15 --min-lift 2.5 --fdr 0.01 \
     --n-clusters 30
+
+# Stage 7: static figures for quick inspection
+bash /home/l338m483/bin/STREME_parser/bin/streme-parser network-viz network_P_eatonii/ \
+    --output network_P_eatonii/figures \
+    --top-n 20 \
+    --dpi 200
 
 echo
 echo "All downstream stages complete."
 echo "  TOMTOM   -> prepared_penstemon_eatonii/tomtom_P_eatonii/tomtom.tsv"
 echo "  Consol.  -> outputs/consolidated_P_eatonii.tsv"
 echo "  Network  -> network_P_eatonii/motif_cooccurrence_network.graphml"
+echo "  Figures  -> network_P_eatonii/figures/*.png"

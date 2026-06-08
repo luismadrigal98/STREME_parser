@@ -1084,13 +1084,17 @@ Examples:
     
     if args.command == 'consolidate':
         output_file = run_consolidation(args)
-        
-        # Ask if user wants to validate
-        print(f"\n=== VALIDATION OPTION ===")
-        response = input(f"Would you like to validate the results in {output_file}? (y/n): ").strip().lower()
-        if response in ['y', 'yes']:
-            print()
-            run_validation(output_file)
+
+        # Only prompt interactively; batch environments (e.g., SLURM) have no stdin.
+        if sys.stdin.isatty():
+            print(f"\n=== VALIDATION OPTION ===")
+            response = input(f"Would you like to validate the results in {output_file}? (y/n): ").strip().lower()
+            if response in ['y', 'yes']:
+                print()
+                run_validation(output_file)
+        else:
+            print("\n=== VALIDATION OPTION SKIPPED ===")
+            print("Non-interactive session detected; run 'validate' explicitly if needed.")
     
     elif args.command == 'validate':
         if not Path(args.tsv_file).exists():

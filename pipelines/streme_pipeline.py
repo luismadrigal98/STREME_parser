@@ -776,6 +776,30 @@ gene_cluster_fingerprints.tsv, motif_positional_summary.tsv.
     network_parser.add_argument('--skip-clusters', action='store_true')
     network_parser.add_argument('--seed', type=int, default=42)
 
+    # Network-viz subcommand: static figures from network outputs
+    network_viz_parser = subparsers.add_parser(
+        'network-viz',
+        help='Create static PNG visualizations from motif-network outputs',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use default output: <network_dir>/figures/
+    %(prog)s network_P_eatonii/
+
+  # Custom figure output directory
+    %(prog)s network_P_eatonii/ --output figures_P_eatonii/ --top-n 25
+        """
+    )
+    network_viz_parser.add_argument('network_dir',
+                                    help='Directory with motif_network.py outputs')
+    network_viz_parser.add_argument('--output', '-o',
+                                    help='Figure output directory '
+                                         '(default: <network_dir>/figures/)')
+    network_viz_parser.add_argument('--top-n', type=int, default=20,
+                                    help='Top N categories in summary plots (default: 20)')
+    network_viz_parser.add_argument('--dpi', type=int, default=200,
+                                    help='Figure resolution in DPI (default: 200)')
+
     # Annotate subcommand: TOMTOM every prepared genome's STREME motifs vs a TF database
     annotate_parser = subparsers.add_parser(
         'annotate',
@@ -952,6 +976,18 @@ Common databases (download in MEME format):
         if args.skip_clusters:
             cmd.append('--skip-clusters')
         success = run_command(cmd, "Running motif network + gene clustering")
+        sys.exit(0 if success else 1)
+
+    elif args.command == 'network-viz':
+        cmd = [
+            sys.executable, str(project_root / 'cli_tools' / 'motif_network_visualizer.py'),
+            args.network_dir,
+            '--top-n', str(args.top_n),
+            '--dpi', str(args.dpi),
+        ]
+        if args.output:
+            cmd += ['--output', args.output]
+        success = run_command(cmd, "Creating network visualizations")
         sys.exit(0 if success else 1)
 
     elif args.command == 'consolidate':
