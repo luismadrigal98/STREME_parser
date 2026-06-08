@@ -40,7 +40,7 @@ streme-parser prepare \
     --contig-pattern '^PeChr' \
     --upstream 2000 \
     --avoid-overlap \
-    --mask repeatmasker --mask-lib repeats/P_eatonii/library.fa \
+    --mask dust \
     --extra-mask trf \
     --background-order 3 \
     --nmotifs 50 \
