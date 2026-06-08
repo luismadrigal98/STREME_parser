@@ -23,6 +23,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.collections import LineCollection
+from matplotlib import cm
 
 
 def load_table(path):
@@ -34,6 +36,13 @@ def load_table(path):
 def ensure_output_dir(path):
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def compute_degree(edges):
+    return pd.concat([
+        edges[["motif_a"]].rename(columns={"motif_a": "motif_id"}),
+        edges[["motif_b"]].rename(columns={"motif_b": "motif_id"}),
+    ]).value_counts("motif_id").reset_index(name="degree")
 
 
 def plot_edge_strength(edges, out_dir, dpi):
@@ -56,10 +65,7 @@ def plot_edge_strength(edges, out_dir, dpi):
 
 
 def plot_motif_degree(edges, out_dir, top_n, dpi):
-    degree = pd.concat([
-        edges[["motif_a"]].rename(columns={"motif_a": "motif_id"}),
-        edges[["motif_b"]].rename(columns={"motif_b": "motif_id"}),
-    ]).value_counts("motif_id").reset_index(name="degree")
+    degree = compute_degree(edges)
 
     top = degree.head(top_n).sort_values("degree", ascending=True)
 
@@ -73,6 +79,123 @@ def plot_motif_degree(edges, out_dir, top_n, dpi):
     fig.savefig(out, dpi=dpi)
     plt.close(fig)
     return out
+
+
+def _plot_network(edges, modules, out_file, title, max_nodes, label_top, dpi):
+    degree = compute_degree(edges)
+    nodes = degree.head(max_nodes)["motif_id"].tolist()
+    if not nodes:
+        return None
+
+    sub = edges[edges["motif_a"].isin(nodes) & edges["motif_b"].isin(nodes)].copy()
+    if sub.empty:
+        return None
+
+    degree_map = dict(zip(degree["motif_id"], degree["degree"]))
+    module_map = {}
+    if modules is not None and not modules.empty and {"motif_id", "module_id"}.issubset(modules.columns):
+        module_map = dict(zip(modules["motif_id"], modules["module_id"]))
+
+    node_df = pd.DataFrame({"motif_id": nodes})
+    node_df["degree"] = node_df["motif_id"].map(degree_map).fillna(0)
+    node_df["module_id"] = node_df["motif_id"].map(module_map).fillna(0).astype(int)
+    node_df = node_df.sort_values(["module_id", "degree"], ascending=[True, False]).reset_index(drop=True)
+
+    n = len(node_df)
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    node_df["x"] = np.cos(angles)
+    node_df["y"] = np.sin(angles)
+    pos = dict(zip(node_df["motif_id"], zip(node_df["x"], node_df["y"])))
+
+    segments = []
+    strengths = []
+    for _, row in sub.iterrows():
+        a = row["motif_a"]
+        b = row["motif_b"]
+        if a not in pos or b not in pos:
+            continue
+        segments.append([pos[a], pos[b]])
+        strengths.append(float(row.get("jaccard", 0.0)))
+
+    fig, ax = plt.subplots(figsize=(10, 10), constrained_layout=True)
+    ax.set_title(title)
+
+    if segments:
+        strengths_arr = np.array(strengths)
+        if np.allclose(strengths_arr.max(), strengths_arr.min()):
+            widths = np.full_like(strengths_arr, 0.8)
+        else:
+            widths = 0.4 + 2.6 * (strengths_arr - strengths_arr.min()) / (strengths_arr.max() - strengths_arr.min())
+        edge_collection = LineCollection(segments, colors="#7f8c8d", linewidths=widths, alpha=0.25, zorder=1)
+        ax.add_collection(edge_collection)
+
+    modules_unique = sorted(node_df["module_id"].unique())
+    color_lookup = {}
+    palette = cm.get_cmap("tab20", max(1, len([m for m in modules_unique if m > 0])))
+    idx = 0
+    for mid in modules_unique:
+        if mid <= 0:
+            color_lookup[mid] = "#bdc3c7"
+        else:
+            color_lookup[mid] = palette(idx)
+            idx += 1
+
+    node_sizes = 30 + 8 * np.sqrt(node_df["degree"].values)
+    node_colors = [color_lookup[m] for m in node_df["module_id"]]
+    ax.scatter(node_df["x"], node_df["y"], s=node_sizes, c=node_colors,
+               edgecolor="white", linewidth=0.5, zorder=3)
+
+    if label_top > 0:
+        top_labels = node_df.nlargest(label_top, "degree")
+        for _, row in top_labels.iterrows():
+            ax.text(row["x"] * 1.08, row["y"] * 1.08, row["motif_id"],
+                    fontsize=8, ha="center", va="center", zorder=4)
+
+    ax.set_aspect("equal")
+    ax.set_xlim(-1.25, 1.25)
+    ax.set_ylim(-1.25, 1.25)
+    ax.axis("off")
+
+    fig.savefig(out_file, dpi=dpi)
+    plt.close(fig)
+    return out_file
+
+
+def plot_network_overview(edges, modules, out_dir, max_nodes, label_top, dpi):
+    return _plot_network(
+        edges,
+        modules,
+        out_dir / "motif_network_overview.png",
+        f"Motif Co-occurrence Network (Top {max_nodes} nodes)",
+        max_nodes,
+        label_top,
+        dpi,
+    )
+
+
+def plot_network_main_module(edges, modules, out_dir, max_nodes, label_top, dpi):
+    if modules is None or modules.empty or "module_id" not in modules.columns:
+        return None
+
+    non_singleton = modules[modules["module_id"] > 0]
+    if non_singleton.empty:
+        return None
+    main_module = int(non_singleton["module_id"].value_counts().idxmax())
+    main_nodes = set(non_singleton.loc[non_singleton["module_id"] == main_module, "motif_id"])
+
+    sub_edges = edges[edges["motif_a"].isin(main_nodes) & edges["motif_b"].isin(main_nodes)].copy()
+    if sub_edges.empty:
+        return None
+
+    return _plot_network(
+        sub_edges,
+        modules,
+        out_dir / "motif_network_main_module.png",
+        f"Motif Co-occurrence Network (Main module {main_module})",
+        max_nodes,
+        label_top,
+        dpi,
+    )
 
 
 def plot_module_sizes(modules, out_dir, top_n, dpi):
@@ -149,6 +272,10 @@ def main(argv=None):
     parser.add_argument("network_dir", help="Directory with motif_network.py outputs")
     parser.add_argument("--output", "-o", help="Output directory for figures (default: <network_dir>/figures)")
     parser.add_argument("--top-n", type=int, default=20, help="Top N categories to show in bar/heatmap plots")
+    parser.add_argument("--network-nodes", type=int, default=120,
+                        help="Max nodes shown in network graphs (default: 120)")
+    parser.add_argument("--label-top", type=int, default=15,
+                        help="Label top N high-degree nodes in network graphs (default: 15)")
     parser.add_argument("--dpi", type=int, default=200, help="Figure DPI (default: 200)")
     args = parser.parse_args(argv)
 
@@ -172,6 +299,12 @@ def main(argv=None):
     if edges is not None and not edges.empty and {"motif_a", "motif_b", "jaccard", "lift"}.issubset(edges.columns):
         produced.append(plot_edge_strength(edges, out_dir, args.dpi))
         produced.append(plot_motif_degree(edges, out_dir, args.top_n, args.dpi))
+        produced.append(plot_network_overview(
+            edges, modules, out_dir, args.network_nodes, args.label_top, args.dpi
+        ))
+        produced.append(plot_network_main_module(
+            edges, modules, out_dir, args.network_nodes, args.label_top, args.dpi
+        ))
     else:
         print("[warn] Skipping edge plots: motif_cooccurrence_edges.tsv missing or malformed")
 

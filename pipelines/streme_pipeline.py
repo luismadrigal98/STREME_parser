@@ -797,6 +797,10 @@ Examples:
                                          '(default: <network_dir>/figures/)')
     network_viz_parser.add_argument('--top-n', type=int, default=20,
                                     help='Top N categories in summary plots (default: 20)')
+    network_viz_parser.add_argument('--network-nodes', type=int, default=120,
+                                    help='Max nodes shown in network graphs (default: 120)')
+    network_viz_parser.add_argument('--label-top', type=int, default=15,
+                                    help='Label top N motifs in network graphs (default: 15)')
     network_viz_parser.add_argument('--dpi', type=int, default=200,
                                     help='Figure resolution in DPI (default: 200)')
 
@@ -983,6 +987,8 @@ Common databases (download in MEME format):
             sys.executable, str(project_root / 'cli_tools' / 'motif_network_visualizer.py'),
             args.network_dir,
             '--top-n', str(args.top_n),
+            '--network-nodes', str(args.network_nodes),
+            '--label-top', str(args.label_top),
             '--dpi', str(args.dpi),
         ]
         if args.output:
