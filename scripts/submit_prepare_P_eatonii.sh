@@ -33,7 +33,7 @@ ln -sfn "$(realpath "$LIB")" repeats/P_eatonii/library.fa
 echo "library -> $(realpath repeats/P_eatonii/library.fa)"
 
 # Stage 3: prepare + STREME + FIMO inline.
-streme-parser prepare \
+sh /home/l338m483/bin/STREME_parser/bin/streme-parser prepare \
     --genome P_eatonii \
     --fasta penstemon_eatonii/PeChr.BYU.final.fa \
     --annotation penstemon_eatonii/penstemon_eatonii_final_nuclear_cp.gff3 \

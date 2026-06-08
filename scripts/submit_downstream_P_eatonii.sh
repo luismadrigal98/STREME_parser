@@ -22,19 +22,19 @@ conda activate PyR
 cd /kuhpc/scratch/kelly/l338m483/MEME_Penstemon
 
 # Stage 4: TOMTOM
-streme-parser annotate prepared_penstemon_eatonii/ \
+sh /home/l338m483/bin/STREME_parser/bin/streme-parser annotate prepared_penstemon_eatonii/ \
     --target-db databases/Ath_TF_binding_motifs.meme \
     --thresh 0.1 --jobs 1
 
 # Stage 5: consolidate + validate
-streme-parser consolidate prepared_penstemon_eatonii/ \
+sh /home/l338m483/bin/STREME_parser/bin/streme-parser consolidate prepared_penstemon_eatonii/ \
     --output outputs/consolidated_P_eatonii \
     --threshold 0.75
 
-streme-parser validate outputs/consolidated_P_eatonii.tsv
+sh /home/l338m483/bin/STREME_parser/bin/streme-parser validate outputs/consolidated_P_eatonii.tsv
 
 # Stage 6: motif co-occurrence network + gene clustering
-streme-parser network outputs/consolidated_P_eatonii.tsv \
+sh /home/l338m483/bin/STREME_parser/bin/streme-parser network outputs/consolidated_P_eatonii.tsv \
     --output network_P_eatonii/ \
     --min-motif-sites 20 \
     --min-jaccard 0.15 --min-lift 2.5 --fdr 0.01 \
