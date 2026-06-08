@@ -22,9 +22,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from matplotlib.collections import LineCollection
 from matplotlib import cm
+
+try:
+    import seaborn as sns
+    HAS_SEABORN = True
+except ImportError:
+    sns = None
+    HAS_SEABORN = False
 
 
 def load_table(path):
@@ -48,12 +54,18 @@ def compute_degree(edges):
 def plot_edge_strength(edges, out_dir, dpi):
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), constrained_layout=True)
 
-    sns.histplot(edges["jaccard"], bins=30, kde=True, ax=axes[0], color="#1f77b4")
+    if HAS_SEABORN:
+        sns.histplot(edges["jaccard"], bins=30, kde=True, ax=axes[0], color="#1f77b4")
+    else:
+        axes[0].hist(edges["jaccard"], bins=30, color="#1f77b4", alpha=0.85)
     axes[0].set_title("Jaccard Distribution")
     axes[0].set_xlabel("Jaccard")
     axes[0].set_ylabel("Edge count")
 
-    sns.histplot(edges["lift"], bins=30, kde=True, ax=axes[1], color="#d62728")
+    if HAS_SEABORN:
+        sns.histplot(edges["lift"], bins=30, kde=True, ax=axes[1], color="#d62728")
+    else:
+        axes[1].hist(edges["lift"], bins=30, color="#d62728", alpha=0.85)
     axes[1].set_title("Lift Distribution")
     axes[1].set_xlabel("Lift")
     axes[1].set_ylabel("Edge count")
@@ -70,7 +82,10 @@ def plot_motif_degree(edges, out_dir, top_n, dpi):
     top = degree.head(top_n).sort_values("degree", ascending=True)
 
     fig, ax = plt.subplots(figsize=(8, max(4, 0.35 * len(top))), constrained_layout=True)
-    sns.barplot(data=top, x="degree", y="motif_id", ax=ax, color="#2ca02c")
+    if HAS_SEABORN:
+        sns.barplot(data=top, x="degree", y="motif_id", ax=ax, color="#2ca02c")
+    else:
+        ax.barh(top["motif_id"], top["degree"], color="#2ca02c")
     ax.set_title(f"Top {len(top)} Motifs by Network Degree")
     ax.set_xlabel("Degree")
     ax.set_ylabel("Motif")
@@ -204,7 +219,10 @@ def plot_module_sizes(modules, out_dir, top_n, dpi):
     top = sizes.sort_values("motif_count", ascending=False).head(top_n).sort_values("motif_count", ascending=True)
 
     fig, ax = plt.subplots(figsize=(8, max(4, 0.35 * len(top))), constrained_layout=True)
-    sns.barplot(data=top, x="motif_count", y="module_id", orient="h", ax=ax, color="#9467bd")
+    if HAS_SEABORN:
+        sns.barplot(data=top, x="motif_count", y="module_id", orient="h", ax=ax, color="#9467bd")
+    else:
+        ax.barh(top["module_id"].astype(str), top["motif_count"], color="#9467bd")
     ax.set_title(f"Top {len(top)} Motif Module Sizes")
     ax.set_xlabel("Motifs in module")
     ax.set_ylabel("Module ID")
@@ -225,7 +243,10 @@ def plot_gene_cluster_sizes(gene_clusters, out_dir, top_n, dpi):
     top = sizes.sort_values("gene_count", ascending=False).head(top_n).sort_values("gene_count", ascending=True)
 
     fig, ax = plt.subplots(figsize=(8, max(4, 0.35 * len(top))), constrained_layout=True)
-    sns.barplot(data=top, x="gene_count", y="cluster_id", orient="h", ax=ax, color="#ff7f0e")
+    if HAS_SEABORN:
+        sns.barplot(data=top, x="gene_count", y="cluster_id", orient="h", ax=ax, color="#ff7f0e")
+    else:
+        ax.barh(top["cluster_id"].astype(str), top["gene_count"], color="#ff7f0e")
     ax.set_title(f"Top {len(top)} Gene Cluster Sizes")
     ax.set_xlabel("Genes in cluster")
     ax.set_ylabel("Cluster ID")
@@ -254,7 +275,15 @@ def plot_cluster_fingerprint_heatmap(fingerprints, out_dir, top_n, dpi):
     mat = mat.loc[sorted(mat.index)]
 
     fig, ax = plt.subplots(figsize=(max(8, 0.35 * mat.shape[1]), max(4, 0.4 * mat.shape[0])), constrained_layout=True)
-    sns.heatmap(mat, cmap="mako", ax=ax)
+    if HAS_SEABORN:
+        sns.heatmap(mat, cmap="mako", ax=ax)
+    else:
+        im = ax.imshow(mat.values, cmap="viridis", aspect="auto")
+        ax.set_xticks(np.arange(mat.shape[1]))
+        ax.set_yticks(np.arange(mat.shape[0]))
+        ax.set_xticklabels(mat.columns, rotation=90)
+        ax.set_yticklabels(mat.index)
+        fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
     ax.set_title("Cluster-Motif Enrichment Heatmap (-log10 q)")
     ax.set_xlabel("Motif")
     ax.set_ylabel("Gene cluster")
@@ -287,7 +316,10 @@ def main(argv=None):
     out_dir = Path(args.output) if args.output else network_dir / "figures"
     ensure_output_dir(out_dir)
 
-    sns.set_theme(style="whitegrid", context="talk")
+    if HAS_SEABORN:
+        sns.set_theme(style="whitegrid", context="talk")
+    else:
+        plt.style.use("ggplot")
 
     edges = load_table(network_dir / "motif_cooccurrence_edges.tsv")
     modules = load_table(network_dir / "motif_modules.tsv")
